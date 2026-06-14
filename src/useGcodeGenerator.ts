@@ -10,11 +10,35 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getFont, measureTextSize } from "./fonts";
 import { useMachineStore } from "./store";
 import { flattenSvg } from "./svgFlatten";
+import { layoutTextToPolylines } from "./textLayout";
 import { loadFont } from "./textToPaths";
 import type { GenerateRequest, Polyline, WorkerResponse } from "./types";
+
+/** Bounding-box size (mm) of a polyline set. */
+function measurePolylines(polylines: Polyline[]): {
+  width: number;
+  height: number;
+} {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pl of polylines) {
+    for (const p of pl) {
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  if (!Number.isFinite(minX)) {
+    throw new Error("Bu metin için ölçülebilir bir şekil üretilemedi.");
+  }
+  return { width: maxX - minX, height: maxY - minY };
+}
 
 /** Leave a 2% breathing margin so the part never sits exactly on the edge. */
 const FIT_MARGIN = 0.98;
@@ -81,10 +105,12 @@ export function useGcodeGenerator() {
           store.setError("Lütfen önce bir metin girin.");
           return;
         }
-        polylines = await getFont(store.fontId).toPolylines({
+        polylines = await layoutTextToPolylines({
           text: store.text,
+          fontId: store.fontId,
           fontSizeMm: store.fontSizeMm,
           tolerance: params.tolerance,
+          layout: store.layout,
         });
       }
 
@@ -119,7 +145,7 @@ export function useGcodeGenerator() {
       return;
     }
 
-    const { maxX, maxY, tolerance, fontId } = store;
+    const { maxX, maxY, tolerance, fontId, layout } = store;
     if (!(maxX > 0) || !(maxY > 0)) {
       store.setError("Geçerli bir tabla boyutu (Max X / Max Y) girin.");
       return;
@@ -127,13 +153,24 @@ export function useGcodeGenerator() {
 
     setFitting(true);
     try {
-      // Measure at a fixed reference size; geometry scales linearly with size.
+      // Measure the FULL layout (lines, frame, copies) at a fixed reference
+      // size; the whole composition scales linearly with the font size, so the
+      // explicit-mm overrides (frame padding / block gap) are temporarily
+      // dropped here to keep the proportional scaling honest.
       const refSize = 100;
-      const { width, height } = await measureTextSize(fontId, {
+      const refLayout = {
+        ...layout,
+        framePaddingMm: null,
+        blockGapMm: null,
+      };
+      const refPolylines = await layoutTextToPolylines({
         text: store.text,
+        fontId,
         fontSizeMm: refSize,
         tolerance,
+        layout: refLayout,
       });
+      const { width, height } = measurePolylines(refPolylines);
 
       if (!(width > 0) || !(height > 0)) {
         store.setError("Bu metin için ölçülebilir bir şekil üretilemedi.");

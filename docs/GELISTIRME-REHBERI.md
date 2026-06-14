@@ -18,6 +18,7 @@ sorusunun cevabını verir. Önce hızlı haritaya bak, sonra ilgili reçeteye g
 | [src/types.ts](../src/types.ts) | **Ana↔worker sözleşmesi** (tüm paylaşılan tipler) | ortak |
 | [src/useGcodeGenerator.ts](../src/useGcodeGenerator.ts) | Worker yaşam döngüsü + `generate()` orkestrasyonu | ana |
 | [src/textToPaths.ts](../src/textToPaths.ts) | Metin → polyline (opentype.js) + `normalizeToOrigin` (paylaşılan) | ana |
+| [src/textLayout.ts](../src/textLayout.ts) | **Etiket kompozisyonu**: çok satır + çoklu blok + ızgara kopya + çerçeve | ana |
 | [src/fonts/index.ts](../src/fonts/index.ts) | **Font kayıt defteri** (`FontProvider` arayüzü + registry) | ana |
 | [src/fonts/hersheyData.ts](../src/fonts/hersheyData.ts) | Tek-çizgi (Hershey) glyph verisi (gömülü) | ana |
 | [src/fonts/hersheyFont.ts](../src/fonts/hersheyFont.ts) | Hershey metin dizilimi → ham polyline | ana |
@@ -107,6 +108,32 @@ yeni font = yeni provider, çağıran hiçbir yer (store/generator/UI) değişme
   zaten zorlar; UI seçimi [AdvancedPanel](../src/components/AdvancedPanel.tsx)
   otomatik listeler.
 
+### 🟢 Etiket düzeni: çok satır, çoklu etiket, çerçeve
+
+Tüm kompozisyon **tek yerde**: [src/textLayout.ts](../src/textLayout.ts).
+Font sağlayıcıları yalnızca **tek bir metin parçasını** polyline'a çevirir;
+`layoutTextToPolylines` bunları üst üste/yan yana dizer ve çerçeveler. Worker,
+güvenlik ve simülasyon hiç değişmez — hepsi sadece normalize polyline görür.
+
+- **Çok satır:** `Enter` → alt satır. `splitIntoBlocks` metni satırlara böler;
+  `buildBlock` satırları `lineSpacing × fontSize` adımıyla aşağı istifler.
+- **Çoklu etiket:** **boş satır** (çift Enter) blokları ayırır. Her blok ayrı
+  çerçevelenir; bloklar tek sütun olarak dizilir.
+- **Izgara kopya:** `layout.copyRows × copyCols` → `arrangeGrid` tüm seti
+  tablaya döşer.
+- **Çerçeve:** `buildFrame` — `frameStyle` (`none`/`rect`/`rounded`/`dashed`)
+  ve `framePaddingMm` (null = otomatik, yazı boyutunun %40'ı). Yeni stil eklemek
+  = `buildFrame`'e bir dal + `FrameStyle` birleşimine bir değer + `FrameChooser`
+  butonu.
+- **Durum:** alanlar [src/types.ts](../src/types.ts) `LabelLayout` içinde, tek
+  `layout` nesnesi olarak store'da; `setLayout(patch)` ile güncellenir ve
+  **sonucu geçersiz kılar** (geometri değiştiği için). UI:
+  [TextInputPanel](../src/components/TextInputPanel.tsx) (metin + ipucu) ve
+  [AdvancedPanel](../src/components/AdvancedPanel.tsx) (çerçeve/aralık/ızgara).
+- **"Tablaya Sığdır"** layout'un tamamını referans boyutta ölçer
+  ([useGcodeGenerator.ts](../src/useGcodeGenerator.ts)), böylece çerçeve ve
+  kopyalar da hesaba katılır.
+
 ### 🟢 Kalem ucu kalınlığı / simülasyon oynatma
 
 - **Kalem ucu:** `penDiameterMm` bir `MachineParams` alanıdır ama **G-code'u
@@ -133,9 +160,9 @@ yeni font = yeni provider, çağıran hiçbir yer (store/generator/UI) değişme
 
 `useMachineStore` tek global mağaza. Önemli davranışlar:
 
-- **Sonuç geçersiz kılma:** `setText`, `setFontSize`, `setSvg`, `clearSvg`,
-  `setMode` çağrıldığında `gcode/moves/stats` sıfırlanır → ekranda hiçbir zaman
-  güncel olmayan çıktı kalmaz.
+- **Sonuç geçersiz kılma:** `setText`, `setFontSize`, `setFontId`, `setLayout`,
+  `setSvg`, `clearSvg`, `setMode` çağrıldığında `gcode/moves/stats` sıfırlanır →
+  ekranda hiçbir zaman güncel olmayan çıktı kalmaz.
 - **Mod:** `mode: "text" | "svg"`. `setMode` kaynağı değiştirir ve sonucu
   temizler.
 - **Saf yardımcı:** `checkWithinLimits(stats, limits)` — store dışında da

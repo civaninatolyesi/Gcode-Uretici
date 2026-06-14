@@ -27,10 +27,17 @@ export function TextInputPanel() {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          rows={3}
-          placeholder="Örn. SERİ NO: 12345"
+          rows={5}
+          placeholder={"Örn.\nSERİ NO: 12345\nÜRÜN: ABC"}
           className="w-full resize-y rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-blue-400"
         />
+        <span className="mt-1 block text-[11px] leading-snug text-slate-500">
+          <strong className="text-slate-400">Enter</strong> ile alt satıra geçin
+          — tablada da alta yazılır.{" "}
+          <strong className="text-slate-400">Boş satır</strong> (çift Enter) ile
+          ayrı bir etiket bloğu oluşturun. Çoklu kopya ve çerçeve için{" "}
+          <em>Gelişmiş Ayarlar</em>'a bakın.
+        </span>
       </label>
 
       <label className="block max-w-[200px]">
