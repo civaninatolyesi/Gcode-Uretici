@@ -190,15 +190,19 @@ async function buildBlock(
     throw new Error("Bu metin için çizilebilir bir şekil üretilemedi.");
   }
 
+  // Find the max line width for center/right alignment.
+  const maxWidth = Math.max(...rendered.map((r) => r.box.width));
+
   const placed: Polyline[] = [];
   let topY = 0; // y of the current line's TOP; we walk downward (negative).
   for (const { polylines, box } of rendered) {
-    // Place this line so its top sits at `topY`. Its own bottom-left is (0,0),
-    // so shifting by (−minX) keeps it left-aligned and by (topY − height) puts
-    // its top at topY.
     const dy = topY - box.height;
-    placed.push(...translate(polylines, -box.minX, dy));
-    topY = dy - (step - box.height); // next line's top = below this baseline gap
+    const align = layout.textAlign ?? "left";
+    let xShift = -box.minX;
+    if (align === "center") xShift += (maxWidth - box.width) / 2;
+    else if (align === "right") xShift += maxWidth - box.width;
+    placed.push(...translate(polylines, xShift, dy));
+    topY = dy - (step - box.height);
   }
 
   // Frame the whole stacked block.
@@ -300,6 +304,19 @@ export async function layoutTextToPolylines(
   //    is a simple coordinate multiply.
   const sx = Math.max(0.01, layout.stretchX ?? 1);
   const sy = Math.max(0.01, layout.stretchY ?? 1);
-  if (sx === 1 && sy === 1) return normalized;
-  return normalized.map((pl) => pl.map((p) => ({ x: p.x * sx, y: p.y * sy })));
+  const stretched =
+    sx === 1 && sy === 1
+      ? normalized
+      : normalized.map((pl) => pl.map((p) => ({ x: p.x * sx, y: p.y * sy })));
+
+  // 4) Apply rotation around the centroid, then re-normalize to (0,0).
+  const deg = layout.rotationDeg ?? 0;
+  if (deg === 0) return stretched;
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const rotated = stretched.map((pl) =>
+    pl.map((p) => ({ x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos })),
+  );
+  return normalizeToOrigin(rotated, false);
 }

@@ -74,6 +74,17 @@ export interface LabelLayout {
    */
   stretchX: number;
   stretchY: number;
+  /**
+   * Rotation angle in degrees, applied to the whole label set after stretch.
+   * 0 = normal, 90 = rotated CCW, 180 = upside-down, 270 = rotated CW.
+   * Any value 0–360 is valid.
+   */
+  rotationDeg: number;
+  /**
+   * Horizontal text alignment within a multi-line label block.
+   * "left" = all lines left-aligned (default), "center" = centered, "right" = right-aligned.
+   */
+  textAlign: "left" | "center" | "right";
 }
 
 /** Axis-aligned bounding box of generated geometry, in mm. */

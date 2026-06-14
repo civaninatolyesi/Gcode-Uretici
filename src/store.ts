@@ -121,6 +121,8 @@ const DEFAULT_LAYOUT: LabelLayout = {
   copyCols: 1,
   stretchX: 1,
   stretchY: 1,
+  rotationDeg: 0,
+  textAlign: "left",
 };
 
 const FRAME_STYLES: FrameStyle[] = ["none", "rect", "rounded", "dashed"];
@@ -144,6 +146,10 @@ function sanitizeLayout(raw: unknown): LabelLayout {
     copyCols: Math.max(1, Math.floor(num(r.copyCols, 1))),
     stretchX: Math.max(0.01, num(r.stretchX, DEFAULT_LAYOUT.stretchX)),
     stretchY: Math.max(0.01, num(r.stretchY, DEFAULT_LAYOUT.stretchY)),
+    rotationDeg: num(r.rotationDeg, DEFAULT_LAYOUT.rotationDeg) % 360,
+    textAlign: (["left", "center", "right"] as const).includes(r.textAlign as "left" | "center" | "right")
+      ? (r.textAlign as "left" | "center" | "right")
+      : DEFAULT_LAYOUT.textAlign,
   };
 }
 

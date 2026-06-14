@@ -294,6 +294,107 @@ function StretchFields() {
   );
 }
 
+function RotationField() {
+  const rotationDeg = useMachineStore((s) => s.layout.rotationDeg ?? 0);
+  const setLayout = useMachineStore((s) => s.setLayout);
+  const invalid = !Number.isFinite(rotationDeg);
+
+  const presets = [0, 90, 180, 270];
+
+  return (
+    <div className="space-y-3">
+      <span className="text-sm font-medium text-slate-200">Yazı Döndürme</span>
+      <div className="flex gap-2">
+        {presets.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => setLayout({ rotationDeg: p })}
+            className={[
+              "flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition",
+              rotationDeg === p
+                ? "border-blue-500 bg-blue-950/40 text-slate-100"
+                : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500",
+            ].join(" ")}
+          >
+            {p}°
+          </button>
+        ))}
+      </div>
+      <label className="block max-w-[220px]">
+        <span className="mb-1 flex items-baseline justify-between">
+          <span className="text-sm font-medium text-slate-200">Özel açı</span>
+          <span className="text-[11px] text-slate-500">derece (0–360)</span>
+        </span>
+        <input
+          type="number"
+          inputMode="decimal"
+          step={1}
+          min={0}
+          max={360}
+          value={Number.isFinite(rotationDeg) ? rotationDeg : ""}
+          onChange={(e) => {
+            const v = e.target.value.trim();
+            const n = v === "" ? 0 : Number(v) % 360;
+            setLayout({ rotationDeg: n < 0 ? n + 360 : n });
+          }}
+          className={[
+            "w-full rounded-md border bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition",
+            invalid
+              ? "border-red-500 focus:border-red-400"
+              : "border-slate-700 focus:border-blue-400",
+          ].join(" ")}
+        />
+        <span className="mt-1 block text-[11px] leading-snug text-slate-500">
+          0° = normal, 90° = sola yatık, 180° = ters, 270° = sağa yatık.
+        </span>
+      </label>
+    </div>
+  );
+}
+
+function TextAlignField() {
+  const textAlign = useMachineStore((s) => s.layout.textAlign ?? "left");
+  const setLayout = useMachineStore((s) => s.setLayout);
+
+  const options: { id: "left" | "center" | "right"; label: string; icon: string }[] = [
+    { id: "left", label: "Sol", icon: "▐▌ ▌" },
+    { id: "center", label: "Orta", icon: "▐▌▌▌" },
+    { id: "right", label: "Sağ", icon: " ▐▌▌" },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <span className="text-sm font-medium text-slate-200">Metin Hizalama</span>
+      <div className="grid grid-cols-3 gap-2">
+        {options.map((o) => {
+          const active = o.id === textAlign;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => setLayout({ textAlign: o.id })}
+              className={[
+                "rounded-lg border px-3 py-2 text-center transition",
+                active
+                  ? "border-blue-500 bg-blue-950/40"
+                  : "border-slate-700 bg-slate-900 hover:border-slate-500",
+              ].join(" ")}
+            >
+              <span className="block text-sm font-medium text-slate-100">
+                {o.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[11px] leading-snug text-slate-500">
+        Çok satırlı metinlerde satırların hizalanma yönü.
+      </p>
+    </div>
+  );
+}
+
 function CopyGridFields() {
   const copyRows = useMachineStore((s) => s.layout.copyRows);
   const copyCols = useMachineStore((s) => s.layout.copyCols);
@@ -370,6 +471,12 @@ export function AdvancedPanel() {
 
         <div className="border-t border-slate-800 pt-4">
           <LineSpacingField />
+        </div>
+        <div className="border-t border-slate-800 pt-4">
+          <RotationField />
+        </div>
+        <div className="border-t border-slate-800 pt-4">
+          <TextAlignField />
         </div>
         <div className="border-t border-slate-800 pt-4">
           <StretchFields />
