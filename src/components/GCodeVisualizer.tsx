@@ -19,7 +19,7 @@
  * how much space it takes."
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMachineStore } from "../store";
 import { useSimPlayer } from "../useSimPlayer";
 import type { GMove } from "../types";
@@ -93,6 +93,25 @@ export function GCodeVisualizer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Zoom multiplier on top of the "fit-to-view" scale. 1 = whole table fills
+  // the viewport; >1 enlarges it (and the surrounding container scrolls).
+  const [zoom, setZoom] = useState(1);
+  const ZOOM_MIN = 1;
+  const ZOOM_MAX = 20;
+
+  // After a zoom change we re-center the scroll so a chosen "anchor" point of
+  // the canvas stays under the same viewport spot (so wheel-zoom homes in on
+  // the cursor, and "zoom to drawing" lands on the part). One pending request
+  // is held here and consumed by the layout effect once the canvas is resized.
+  const pendingFocusRef = useRef<{
+    // Fraction (0..1) of the canvas the anchor sits at, in the NEW zoom.
+    cx: number;
+    cy: number;
+    // Viewport pixel where that anchor should appear.
+    vx: number;
+    vy: number;
+  } | null>(null);
+
   // Playback: how far along the toolpath the pen currently is.
   const player = useSimPlayer(moves);
   const { progress, tip } = player;
@@ -107,18 +126,8 @@ export function GCodeVisualizer() {
       if (!ctx) return;
 
       const dpr = window.devicePixelRatio || 1;
-      const cssW = container.clientWidth;
-      const cssH = container.clientHeight;
-
-      canvas.width = Math.max(1, Math.floor(cssW * dpr));
-      canvas.height = Math.max(1, Math.floor(cssH * dpr));
-      canvas.style.width = `${cssW}px`;
-      canvas.style.height = `${cssH}px`;
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, cssW, cssH);
-      ctx.fillStyle = COLORS.bg;
-      ctx.fillRect(0, 0, cssW, cssH);
+      const viewW = container.clientWidth;
+      const viewH = container.clientHeight;
 
       const part = computeBounds(moves);
       const hasPart = !!part && moves.length >= 2;
@@ -134,18 +143,36 @@ export function GCodeVisualizer() {
       const worldW = Math.max(1e-6, worldMaxX - worldMinX);
       const worldH = Math.max(1e-6, worldMaxY - worldMinY);
 
-      const plotW = cssW - MARGIN.left - MARGIN.right;
-      const plotH = cssH - MARGIN.top - MARGIN.bottom;
-      if (plotW <= 0 || plotH <= 0) return;
+      // Base (zoom = 1) scale fits the ENTIRE world inside the viewport, so at
+      // 100% nothing scrolls and the whole scene is visible. Zoom multiplies it;
+      // the canvas then grows past the viewport and scrollbars appear.
+      const availW = viewW - MARGIN.left - MARGIN.right;
+      const availH = viewH - MARGIN.top - MARGIN.bottom;
+      if (availW <= 0 || availH <= 0) return;
+      const fitScale = Math.min(availW / worldW, availH / worldH);
+      const scale = fitScale * zoom;
 
-      // Uniform scale (mm -> px) keeps the table and part undistorted.
-      const scale = Math.min(plotW / worldW, plotH / worldH);
+      // The canvas is sized to EXACTLY contain the scaled world plus margins.
+      // It is NOT stretched to the viewport — the container centers it with
+      // flexbox, so the table stays visually balanced (no big empty gutters)
+      // in a wide/short viewport, and at zoom 1 it always fits with no scroll.
+      const cssW = worldW * scale + MARGIN.left + MARGIN.right;
+      const cssH = worldH * scale + MARGIN.top + MARGIN.bottom;
 
-      const drawW = worldW * scale;
-      const drawH = worldH * scale;
-      // Center the scene within the plot region.
-      const originPxX = MARGIN.left + (plotW - drawW) / 2;
-      const originPxY = MARGIN.top + (plotH - drawH) / 2;
+      canvas.width = Math.max(1, Math.floor(cssW * dpr));
+      canvas.height = Math.max(1, Math.floor(cssH * dpr));
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssW, cssH);
+      ctx.fillStyle = COLORS.bg;
+      ctx.fillRect(0, 0, cssW, cssH);
+
+      // World maps directly into the plot region; the canvas already has the
+      // exact size, so there is no leftover space to re-center within.
+      const originPxX = MARGIN.left;
+      const originPxY = MARGIN.top;
 
       // World (mm, Y-up) -> screen (px, Y-down).
       const tx = (xmm: number) => originPxX + (xmm - worldMinX) * scale;
@@ -165,7 +192,7 @@ export function GCodeVisualizer() {
             ? "G-code üretiliyor…"
             : "Tablayı görüyorsunuz. Çizim için “G-Code Üret”e basın.",
           cssW / 2,
-          MARGIN.top + plotH / 2,
+          cssH / 2,
         );
         return;
       }
@@ -473,7 +500,126 @@ export function GCodeVisualizer() {
     const ro = new ResizeObserver(() => draw());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [moves, status, stats, maxX, maxY, penDiameterMm, progress, tip]);
+  }, [moves, status, stats, maxX, maxY, penDiameterMm, progress, tip, zoom]);
+
+  // After zoom changes the canvas is resized by the draw effect above; this
+  // layout effect (running synchronously before paint) then adjusts the
+  // scroll so the requested anchor stays put — no visible jump.
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    const focus = pendingFocusRef.current;
+    if (!container || !canvas || !focus) return;
+    pendingFocusRef.current = null;
+
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    // Canvas may be centered by flexbox when smaller than the viewport; account
+    // for that offset so the math holds at every zoom level.
+    const offX = Math.max(0, (container.clientWidth - cw) / 2);
+    const offY = Math.max(0, (container.clientHeight - ch) / 2);
+
+    container.scrollLeft = offX + focus.cx * cw - focus.vx;
+    container.scrollTop = offY + focus.cy * ch - focus.vy;
+  }, [zoom]);
+
+  /**
+   * Set a new zoom while keeping the canvas point currently under (vx, vy)
+   * — a viewport-relative pixel — anchored at that same spot afterwards.
+   * Used by the +/- buttons (anchor = viewport center) and wheel (= cursor).
+   */
+  const zoomAtPoint = useCallback(
+    (nextZoom: number, vx?: number, vy?: number) => {
+      const container = containerRef.current;
+      const canvas = canvasRef.current;
+      const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +nextZoom.toFixed(3)));
+      setZoom((prev) => {
+        if (z === prev || !container || !canvas) return z;
+        const cw = canvas.clientWidth;
+        const ch = canvas.clientHeight;
+        const offX = Math.max(0, (container.clientWidth - cw) / 2);
+        const offY = Math.max(0, (container.clientHeight - ch) / 2);
+        // Default anchor: viewport center.
+        const ax = vx ?? container.clientWidth / 2;
+        const ay = vy ?? container.clientHeight / 2;
+        // Which fraction of the (current) canvas is under the anchor?
+        const cx = (container.scrollLeft + ax - offX) / cw;
+        const cy = (container.scrollTop + ay - offY) / ch;
+        // That fraction is scale-invariant, so reuse it in the new zoom.
+        pendingFocusRef.current = {
+          cx: Math.min(1, Math.max(0, cx)),
+          cy: Math.min(1, Math.max(0, cy)),
+          vx: ax,
+          vy: ay,
+        };
+        return z;
+      });
+    },
+    [],
+  );
+
+  /**
+   * Zoom so the DRAWING (its bounding box) fills the viewport, then scroll to
+   * it. Lets the user inspect a small label on a big table at full detail.
+   */
+  const zoomToDrawing = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || !stats) return;
+    const view = container.clientWidth;
+    const viewH = container.clientHeight;
+
+    // World extents the draw effect uses (table extended to any overflow).
+    const worldW = Math.max(1e-6, Math.max(maxX, stats.bbox.maxX) - Math.min(0, stats.bbox.minX));
+    const worldH = Math.max(1e-6, Math.max(maxY, stats.bbox.maxY) - Math.min(0, stats.bbox.minY));
+    const bw = Math.max(1e-6, stats.bbox.width);
+    const bh = Math.max(1e-6, stats.bbox.height);
+
+    // The part occupies bw/worldW of the canvas width (likewise height). To make
+    // it fill ~85% of the viewport, the canvas must be this many viewports wide.
+    const targetZoom = Math.min(
+      ZOOM_MAX,
+      Math.max(
+        ZOOM_MIN,
+        0.85 * Math.min(worldW / bw, worldH / bh),
+      ),
+    );
+
+    // Center of the part as a canvas fraction (plot area sits inside margins,
+    // but for scrolling purposes the small margin offset is negligible).
+    const partCx = (stats.bbox.minX + stats.bbox.width / 2 - Math.min(0, stats.bbox.minX)) / worldW;
+    const partCy = 1 - (stats.bbox.minY + stats.bbox.height / 2 - Math.min(0, stats.bbox.minY)) / worldH;
+
+    pendingFocusRef.current = {
+      cx: Math.min(1, Math.max(0, partCx)),
+      cy: Math.min(1, Math.max(0, partCy)),
+      vx: view / 2,
+      vy: viewH / 2,
+    };
+    setZoom(+targetZoom.toFixed(3));
+  }, [stats, maxX, maxY]);
+
+  // Ctrl/⌘ + wheel = zoom toward the cursor. Bound as a NON-passive native
+  // listener so preventDefault() actually stops the browser's page-zoom; React's
+  // onWheel is passive and can't. A plain wheel is left alone (normal scroll).
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      zoomAtPoint(
+        zoomRef.current * factor,
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+      );
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [zoomAtPoint]);
 
   // Coverage: how much of the table the part occupies (area %).
   const coverage =
@@ -485,7 +631,7 @@ export function GCodeVisualizer() {
       : null;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         <span className="flex items-center gap-1.5 text-slate-300">
           <span className="inline-block h-0.5 w-5 bg-blue-500" />
@@ -510,20 +656,76 @@ export function GCodeVisualizer() {
           Orijin (0,0)
         </span>
         {coverage !== null && (
-          <span className="ml-auto text-slate-400">
+          <span className="text-slate-400">
             Tabla doluluğu:{" "}
             <span className="font-semibold text-slate-200">
               %{coverage.toFixed(0)}
             </span>
           </span>
         )}
+
+        {/* Zoom controls: enlarge the table/drawing when it's too small. */}
+        <div className="ml-auto flex items-center gap-1">
+          <span className="mr-1 text-slate-400">Yakınlaştır</span>
+          <button
+            type="button"
+            onClick={() => zoomAtPoint(zoom - 0.5)}
+            disabled={zoom <= ZOOM_MIN}
+            className="rounded bg-slate-700 px-2 py-1 font-semibold text-slate-200 transition hover:bg-slate-600 disabled:opacity-40"
+            title="Uzaklaştır"
+          >
+            −
+          </button>
+          <span className="w-12 text-center tabular-nums text-slate-300">
+            %{Math.round(zoom * 100)}
+          </span>
+          <button
+            type="button"
+            onClick={() => zoomAtPoint(zoom + 0.5)}
+            disabled={zoom >= ZOOM_MAX}
+            className="rounded bg-slate-700 px-2 py-1 font-semibold text-slate-200 transition hover:bg-slate-600 disabled:opacity-40"
+            title="Yakınlaştır"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={zoomToDrawing}
+            disabled={!stats}
+            className="rounded bg-blue-600 px-2 py-1 font-medium text-white transition hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-400 disabled:opacity-60"
+            title="Çizilen yazıya/şekle yakınlaş"
+          >
+            Çizime yakınlaş
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomAtPoint(1)}
+            disabled={zoom === 1}
+            className="rounded bg-slate-700 px-2 py-1 font-medium text-slate-200 transition hover:bg-slate-600 disabled:opacity-40"
+            title="Tablanın tamamını ekrana sığdır"
+          >
+            Sığdır
+          </button>
+        </div>
       </div>
       <div
         ref={containerRef}
-        className="relative min-h-[360px] flex-1 overflow-hidden rounded-xl border border-slate-700 bg-slate-900"
+        className="relative min-h-0 w-full flex-1 overflow-auto rounded-xl border border-slate-700 bg-slate-900"
       >
-        <canvas ref={canvasRef} className="block h-full w-full" />
+        {/* m-auto centers the canvas while it's smaller than the viewport, but —
+            unlike flex justify/align centering — it does NOT clip the overflow
+            edges when the canvas is larger, so every side stays scroll-reachable. */}
+        <canvas ref={canvasRef} className="block m-auto shrink-0" />
+        {zoom > 1 && (
+          <span className="pointer-events-none absolute bottom-1.5 right-2 rounded bg-slate-950/70 px-1.5 py-0.5 text-[10px] text-slate-400">
+            %{Math.round(zoom * 100)} — kaydırarak gezin
+          </span>
+        )}
       </div>
+      <p className="mt-1 text-[11px] text-slate-500">
+        İpucu: <kbd className="rounded bg-slate-800 px-1">Ctrl</kbd> + fare
+        tekerleği ile imlecin olduğu yere yakınlaşabilirsin.
+      </p>
 
       <SimControls player={player} hasPath={moves.length >= 2} />
     </div>
@@ -544,36 +746,54 @@ function SimControls({
   return (
     <div
       className={[
-        "mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2",
+        "mt-3 flex shrink-0 flex-col gap-3 rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2",
         hasPath ? "" : "pointer-events-none opacity-40",
       ].join(" ")}
     >
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={!hasPath}
-        className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:bg-slate-700"
-        title={playing ? "Duraklat" : "Oynat"}
-      >
-        {playing ? "⏸ Duraklat" : "▶ Oynat"}
-      </button>
-      <button
-        type="button"
-        onClick={restart}
-        disabled={!hasPath}
-        className="rounded-md bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 transition hover:bg-slate-600"
-        title="Baştan oynat"
-      >
-        ⟲ Baştan
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={!hasPath}
+          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:bg-slate-700"
+          title={playing ? "Duraklat" : "Oynat"}
+        >
+          {playing ? "⏸ Duraklat" : "▶ Oynat"}
+        </button>
+        <button
+          type="button"
+          onClick={restart}
+          disabled={!hasPath}
+          className="rounded-md bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 transition hover:bg-slate-600"
+          title="Baştan oynat"
+        >
+          ⟲ Baştan
+        </button>
+
+        <div className="flex shrink-0 items-center gap-1 ml-auto">
+          {speeds.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSpeed(s)}
+              className={[
+                "rounded px-2 py-1 text-xs font-medium transition",
+                speed === s
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-700 text-slate-300 hover:bg-slate-600",
+              ].join(" ")}
+            >
+              {s}×
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/*
-        The scrubber takes its own full-width row on small screens (basis-full)
-        and shares the row on wider ones (sm:basis-0 → flex-grow). min-w-0 lets
-        it shrink instead of overflowing/overlapping its neighbours — the bug
-        where the bar "stayed behind / broke" on narrow layouts.
+        Scrubber on its own row for better visibility on all screen sizes.
+        min-w-0 ensures it doesn't overflow when space is tight.
       */}
-      <div className="flex min-w-0 basis-full items-center gap-3 sm:basis-0 sm:flex-1">
+      <div className="flex min-w-0 items-center gap-3">
         <input
           type="range"
           min={0}
@@ -588,24 +808,6 @@ function SimControls({
         <span className="w-10 shrink-0 text-right text-xs tabular-nums text-slate-300">
           %{Math.round(progress * 100)}
         </span>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1">
-        {speeds.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setSpeed(s)}
-            className={[
-              "rounded px-2 py-1 text-xs font-medium transition",
-              speed === s
-                ? "bg-blue-600 text-white"
-                : "bg-slate-700 text-slate-300 hover:bg-slate-600",
-            ].join(" ")}
-          >
-            {s}×
-          </button>
-        ))}
       </div>
     </div>
   );

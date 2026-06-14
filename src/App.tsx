@@ -370,7 +370,7 @@ export default function App() {
       />
 
       {/* Body: two columns on desktop, filling the remaining viewport height. */}
-      <main className="mx-auto grid min-h-0 w-full max-w-[1800px] flex-1 grid-cols-1 gap-6 overflow-y-auto p-4 sm:p-6 lg:grid-cols-[380px_1fr] lg:overflow-hidden">
+      <main className="mx-auto grid min-h-0 w-full max-w-[1800px] flex-1 grid-cols-1 gap-6 overflow-y-auto p-4 sm:p-6 lg:grid-cols-[380px_1fr]">
         {/* Left: controls (scrolls independently on desktop).
             min-w-0 guards against grid blowout from any long unbroken content. */}
         <section className="space-y-6 lg:min-h-0 lg:min-w-0 lg:overflow-y-auto lg:pr-1">
@@ -409,7 +409,7 @@ export default function App() {
             track and overflow the viewport (worst exactly at the lg breakpoint).
             min-w-0 lets the column shrink to its track. */}
         <section className="flex min-h-0 min-w-0 flex-col gap-4 lg:h-full">
-          <div className="flex min-h-[360px] flex-1 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:min-h-0">
+          <div className="flex min-h-[520px] flex-1 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:min-h-0">
             <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">
               Tabla Önizleme & G-Code Simülasyonu
             </h2>
@@ -423,7 +423,7 @@ export default function App() {
           </div>
 
           {gcode && (
-            <div className="flex max-h-[40vh] shrink-0 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:max-h-[32vh]">
+            <div className="flex max-h-[34vh] shrink-0 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:max-h-[24vh]">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
                 Üretilen G-Code
               </h2>
