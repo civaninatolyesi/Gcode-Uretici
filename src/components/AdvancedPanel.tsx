@@ -237,6 +237,63 @@ function LineSpacingField() {
   );
 }
 
+function StretchFields() {
+  const stretchX = useMachineStore((s) => s.layout.stretchX ?? 1);
+  const stretchY = useMachineStore((s) => s.layout.stretchY ?? 1);
+  const setLayout = useMachineStore((s) => s.setLayout);
+
+  const pct = (v: number) => Math.round(v * 100);
+
+  const field = (
+    axis: "stretchX" | "stretchY",
+    label: string,
+    value: number,
+  ) => {
+    const invalid = !Number.isFinite(value) || value <= 0;
+    return (
+      <label className="block">
+        <span className="mb-1 flex items-baseline justify-between">
+          <span className="text-sm font-medium text-slate-200">{label}</span>
+          <span className="text-[11px] text-slate-500">% (100 = orijinal)</span>
+        </span>
+        <input
+          type="number"
+          inputMode="decimal"
+          step={5}
+          min={1}
+          value={Number.isFinite(value) ? pct(value) : ""}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            setLayout({ [axis]: n > 0 ? n / 100 : NaN });
+          }}
+          className={[
+            "w-full rounded-md border bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition",
+            invalid
+              ? "border-red-500 focus:border-red-400"
+              : "border-slate-700 focus:border-blue-400",
+          ].join(" ")}
+        />
+      </label>
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      <span className="text-sm font-medium text-slate-200">
+        Yazı Geni̇şletme / Daraltma
+      </span>
+      <div className="grid grid-cols-2 gap-3">
+        {field("stretchX", "Yatay (X)", stretchX)}
+        {field("stretchY", "Dikey (Y)", stretchY)}
+      </div>
+      <p className="text-[11px] leading-snug text-slate-500">
+        100% = değişmez. 200% = iki katı geniş/uzun. X ve Y bağımsızdır —
+        yazıyı sadece yatayda uzatmak için Y'yi 100'de bırakın.
+      </p>
+    </div>
+  );
+}
+
 function CopyGridFields() {
   const copyRows = useMachineStore((s) => s.layout.copyRows);
   const copyCols = useMachineStore((s) => s.layout.copyCols);
@@ -313,6 +370,9 @@ export function AdvancedPanel() {
 
         <div className="border-t border-slate-800 pt-4">
           <LineSpacingField />
+        </div>
+        <div className="border-t border-slate-800 pt-4">
+          <StretchFields />
         </div>
         <div className="border-t border-slate-800 pt-4">
           <FrameChooser />

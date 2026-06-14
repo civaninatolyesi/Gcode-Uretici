@@ -119,6 +119,8 @@ const DEFAULT_LAYOUT: LabelLayout = {
   blockGapMm: null,
   copyRows: 1,
   copyCols: 1,
+  stretchX: 1,
+  stretchY: 1,
 };
 
 const FRAME_STYLES: FrameStyle[] = ["none", "rect", "rounded", "dashed"];
@@ -140,6 +142,8 @@ function sanitizeLayout(raw: unknown): LabelLayout {
     blockGapMm: r.blockGapMm === null ? null : numOrNull(r.blockGapMm),
     copyRows: Math.max(1, Math.floor(num(r.copyRows, 1))),
     copyCols: Math.max(1, Math.floor(num(r.copyCols, 1))),
+    stretchX: Math.max(0.01, num(r.stretchX, DEFAULT_LAYOUT.stretchX)),
+    stretchY: Math.max(0.01, num(r.stretchY, DEFAULT_LAYOUT.stretchY)),
   };
 }
 

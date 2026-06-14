@@ -293,5 +293,13 @@ export async function layoutTextToPolylines(
       ? labelSet
       : arrangeGrid([labelSet], rows, cols, gap);
 
-  return normalizeToOrigin(tiled, false);
+  const normalized = normalizeToOrigin(tiled, false);
+
+  // 3) Apply independent axis stretch (1.0 = no change). The stretch is applied
+  //    after normalization so (0,0) stays at the machine origin and the scale
+  //    is a simple coordinate multiply.
+  const sx = Math.max(0.01, layout.stretchX ?? 1);
+  const sy = Math.max(0.01, layout.stretchY ?? 1);
+  if (sx === 1 && sy === 1) return normalized;
+  return normalized.map((pl) => pl.map((p) => ({ x: p.x * sx, y: p.y * sy })));
 }

@@ -67,6 +67,13 @@ export interface LabelLayout {
   /** How many copies of the whole label set, laid out as rows × columns. */
   copyRows: number;
   copyCols: number;
+  /**
+   * Independent axis stretch factors (1.0 = no change, 2.0 = double).
+   * Applied to the final polyline set before it reaches the worker, so
+   * they affect the physical G-code dimensions without touching font metrics.
+   */
+  stretchX: number;
+  stretchY: number;
 }
 
 /** Axis-aligned bounding box of generated geometry, in mm. */
