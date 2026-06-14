@@ -1,13 +1,13 @@
 /**
- * SVG -> flat polylines, on the MAIN THREAD.
+ * SVG -> flat polylines, on the MAIN THREAD (secondary feature).
  *
- * Why on the main thread: we lean on the browser's own SVG geometry engine
- * (getTotalLength / getPointAtLength) to sample EVERY shape — paths, arcs,
- * beziers, circles, rects, polygons, lines — into points. This is the most
- * robust approach: zero hand-written curve/arc math, so no rounding or NaN
- * bugs creep into the geometry. The shapes are temporarily mounted off-screen,
- * normalized to <path> geometry, sampled, and removed. The resulting numeric
- * polylines are then shipped to the worker for the heavy CPU work.
+ * Uses the browser's own SVG geometry engine (getTotalLength /
+ * getPointAtLength) to sample EVERY shape — paths, arcs, beziers, circles,
+ * rects, polygons, lines — into points. Zero hand-written curve math, so no
+ * rounding or NaN bugs. Shapes are temporarily mounted off-screen, normalized
+ * to <path> geometry, sampled, then removed. The resulting numeric polylines
+ * are shipped to the worker for the heavy CPU work (the same pipeline the text
+ * feature uses).
  */
 
 import type { Point, Polyline } from "./types";
@@ -47,7 +47,6 @@ function elementToPathDefs(el: Element): string[] {
       const cy = num("cy");
       const r = num("r");
       if (r <= 0) return [];
-      // Two arcs make a full circle.
       return [
         `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 ${-r * 2} 0 Z`,
       ];
@@ -83,14 +82,8 @@ function elementToPathDefs(el: Element): string[] {
   }
 }
 
-/**
- * Sample a single <path> element (already carrying the correct geometry +
- * inherited transform via the live SVG) into a polyline at the given tolerance.
- */
-function samplePathElement(
-  pathEl: SVGPathElement,
-  tolerance: number,
-): Polyline {
+/** Sample a single <path> element into a polyline at the given tolerance. */
+function samplePathElement(pathEl: SVGPathElement, tolerance: number): Polyline {
   let total = 0;
   try {
     total = pathEl.getTotalLength();
@@ -98,7 +91,6 @@ function samplePathElement(
     return [];
   }
   if (!isFiniteNum(total) || total <= 0) {
-    // Degenerate path (e.g. a single move). Try the start point only.
     try {
       const p = pathEl.getPointAtLength(0);
       return isFiniteNum(p.x) && isFiniteNum(p.y) ? [{ x: p.x, y: p.y }] : [];
@@ -134,17 +126,21 @@ function applyMatrix(m: DOMMatrix, pt: Point): Point {
   };
 }
 
+function isIdentity(m: DOMMatrix): boolean {
+  return (
+    m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1 && m.e === 0 && m.f === 0
+  );
+}
+
 export interface FlattenResult {
   polylines: Polyline[];
-  /** Bounding box of all geometry (in source SVG user units, pre Y-flip). */
-  bbox: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 /**
  * Parse raw SVG text and return flattened polylines in machine space:
  *  - all transforms (including nested groups) baked in,
  *  - Y axis flipped so that "up" on screen = +Y on the machine,
- *  - geometry shifted so its bounding box starts at (0,0).
+ *  - geometry shifted so its bounding box starts at (0,0) (bottom-left origin).
  */
 export function flattenSvg(svgText: string, tolerance: number): FlattenResult {
   const parser = new DOMParser();
@@ -169,7 +165,7 @@ export function flattenSvg(svgText: string, tolerance: number): FlattenResult {
   host.style.height = "0";
   host.style.overflow = "hidden";
 
-  const liveSvg = document.importNode(srcSvg, true) as SVGSVGElement;
+  const liveSvg = document.importNode(srcSvg, true) as unknown as SVGSVGElement;
   host.appendChild(liveSvg);
   document.body.appendChild(host);
 
@@ -184,7 +180,6 @@ export function flattenSvg(svgText: string, tolerance: number): FlattenResult {
       const defs = elementToPathDefs(shape);
       if (defs.length === 0) continue;
 
-      // Element's transform relative to the root SVG.
       let ctm: DOMMatrix | null = null;
       const graphical = shape as SVGGraphicsElement;
       if (typeof graphical.getCTM === "function") {
@@ -194,7 +189,6 @@ export function flattenSvg(svgText: string, tolerance: number): FlattenResult {
       for (const d of defs) {
         const tmp = document.createElementNS(SVG_NS, "path");
         tmp.setAttribute("d", d);
-        // Insert as a sibling so it shares the same coordinate system as `shape`.
         shape.parentNode?.insertBefore(tmp, shape);
 
         const sampled = samplePathElement(tmp, tolerance);
@@ -245,14 +239,5 @@ export function flattenSvg(svgText: string, tolerance: number): FlattenResult {
     })),
   );
 
-  return {
-    polylines: normalized,
-    bbox: { minX, minY, maxX, maxY },
-  };
-}
-
-function isIdentity(m: DOMMatrix): boolean {
-  return (
-    m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1 && m.e === 0 && m.f === 0
-  );
+  return { polylines: normalized };
 }

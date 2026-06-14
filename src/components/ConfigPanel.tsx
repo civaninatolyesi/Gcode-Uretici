@@ -1,5 +1,6 @@
 /**
- * Responsive configuration panel for CNC parameters.
+ * Responsive configuration panel for CNC parameters AND the physical table
+ * (workspace) limits.
  *
  * Each field keeps its own raw text so the user can clear/retype freely; the
  * parsed numeric value is pushed to the store. Invalid (NaN) entries are
@@ -8,17 +9,17 @@
 
 import { useEffect, useState } from "react";
 import { useMachineStore } from "../store";
-import type { MachineParams } from "../types";
+import type { MachineParams, TableLimits } from "../types";
 
-interface FieldDef {
-  key: keyof MachineParams;
+interface FieldDef<K extends string> {
+  key: K;
   label: string;
   hint: string;
   step: number;
   min?: number;
 }
 
-const FIELDS: FieldDef[] = [
+const PARAM_FIELDS: FieldDef<keyof MachineParams>[] = [
   { key: "safeZ", label: "Güvenli Z Yüksekliği", hint: "mm", step: 0.5 },
   { key: "drawZ", label: "Çizim / Dalış Z", hint: "mm", step: 0.1 },
   { key: "feedRate", label: "Kesim Hızı (F)", hint: "mm/dk", step: 50, min: 1 },
@@ -38,10 +39,21 @@ const FIELDS: FieldDef[] = [
   },
 ];
 
-function NumberField({ def }: { def: FieldDef }) {
-  const value = useMachineStore((s) => s[def.key]);
-  const setParam = useMachineStore((s) => s.setParam);
+const LIMIT_FIELDS: FieldDef<keyof TableLimits>[] = [
+  { key: "maxX", label: "Tabla Max X (Genişlik)", hint: "mm", step: 10, min: 1 },
+  { key: "maxY", label: "Tabla Max Y (Yükseklik)", hint: "mm", step: 10, min: 1 },
+];
 
+/** Generic numeric field bound to a store value + setter. */
+function NumberField({
+  def,
+  value,
+  onCommit,
+}: {
+  def: FieldDef<string>;
+  value: number;
+  onCommit: (n: number) => void;
+}) {
   const [raw, setRaw] = useState<string>(String(value));
 
   // Keep the input synced if the store value changes externally.
@@ -71,7 +83,7 @@ function NumberField({ def }: { def: FieldDef }) {
           setRaw(next);
           const n = Number(next);
           if (next.trim() !== "" && Number.isFinite(n)) {
-            setParam(def.key, n);
+            onCommit(n);
           }
         }}
         className={[
@@ -90,21 +102,58 @@ function NumberField({ def }: { def: FieldDef }) {
   );
 }
 
+function ParamField({ def }: { def: FieldDef<keyof MachineParams> }) {
+  const value = useMachineStore((s) => s[def.key]);
+  const setParam = useMachineStore((s) => s.setParam);
+  return (
+    <NumberField
+      def={def}
+      value={value}
+      onCommit={(n) => setParam(def.key, n)}
+    />
+  );
+}
+
+function LimitField({ def }: { def: FieldDef<keyof TableLimits> }) {
+  const value = useMachineStore((s) => s[def.key]);
+  const setLimit = useMachineStore((s) => s.setLimit);
+  return (
+    <NumberField
+      def={def}
+      value={value}
+      onCommit={(n) => setLimit(def.key, n)}
+    />
+  );
+}
+
 export function ConfigPanel() {
   return (
-    <div className="space-y-4">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-        Makine Parametreleri
-      </h2>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {FIELDS.map((def) => (
-          <NumberField key={def.key} def={def} />
-        ))}
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+          Tabla Sınırları
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {LIMIT_FIELDS.map((def) => (
+            <LimitField key={def.key} def={def} />
+          ))}
+        </div>
       </div>
-      <p className="text-[11px] leading-relaxed text-slate-500">
-        Güvenli Z, Çizim Z'den büyük olmalıdır. Hassasiyet değeri düştükçe eğriler
-        daha pürüzsüz, dosya daha büyük olur.
-      </p>
+
+      <div className="space-y-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+          Makine Parametreleri
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {PARAM_FIELDS.map((def) => (
+            <ParamField key={def.key} def={def} />
+          ))}
+        </div>
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          Güvenli Z, Çizim Z'den büyük olmalıdır. Hassasiyet değeri düştükçe eğriler
+          daha pürüzsüz, dosya daha büyük olur.
+        </p>
+      </div>
     </div>
   );
 }

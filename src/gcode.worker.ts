@@ -16,8 +16,10 @@
  */
 
 import type {
+  BoundingBox,
   GenerateRequest,
   GMove,
+  JobStats,
   MachineParams,
   Point,
   Polyline,
@@ -111,7 +113,34 @@ function fmt(n: number): string {
 interface GenerationOutput {
   gcode: string;
   moves: GMove[];
-  stats: { pathCount: number; travelDistance: number; cutDistance: number };
+  stats: JobStats;
+}
+
+/** Axis-aligned bounding box over all polyline points (in mm). */
+function computeBoundingBox(polylines: Polyline[]): BoundingBox {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pl of polylines) {
+    for (const p of pl) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  if (!Number.isFinite(minX)) {
+    return { width: 0, height: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  }
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
 }
 
 function generateGcode(
@@ -129,16 +158,20 @@ function generateGcode(
   if (safeZ <= drawZ)
     throw new Error("Güvenli Z, Çizim Z'den büyük olmalıdır (çarpışma riski).");
 
-  const polylines = nearestNeighborOrder(cleanPolylines(rawPolylines));
-  if (polylines.length === 0) {
+  const cleaned = cleanPolylines(rawPolylines);
+  if (cleaned.length === 0) {
     throw new Error("Üretilecek geçerli yol bulunamadı.");
   }
+  // Bounding box is computed on the geometry as-is (already normalized to start
+  // at the origin by the producer), so it reflects true occupied dimensions.
+  const bbox = computeBoundingBox(cleaned);
+  const polylines = nearestNeighborOrder(cleaned);
 
   const lines: string[] = [];
   const moves: GMove[] = [];
 
   // --- Header ---
-  lines.push("; SVG -> G-Code | Üretildi: " + new Date().toISOString());
+  lines.push("; Etiket Makinesi -> G-Code | Üretildi: " + new Date().toISOString());
   lines.push("G21 ; Milimetre");
   lines.push("G90 ; Mutlak konumlandirma");
 
@@ -200,6 +233,7 @@ function generateGcode(
       pathCount: polylines.length,
       travelDistance,
       cutDistance,
+      bbox,
     },
   };
 }

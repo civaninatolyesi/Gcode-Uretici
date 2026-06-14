@@ -21,6 +21,30 @@ export interface MachineParams {
   tolerance: number;
 }
 
+/** Physical workspace (table) limits in mm. */
+export interface TableLimits {
+  maxX: number;
+  maxY: number;
+}
+
+/** Axis-aligned bounding box of generated geometry, in mm. */
+export interface BoundingBox {
+  width: number;
+  height: number;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** Statistics returned alongside generated G-code. */
+export interface JobStats {
+  pathCount: number;
+  travelDistance: number;
+  cutDistance: number;
+  bbox: BoundingBox;
+}
+
 /** Message: main thread -> worker. */
 export interface GenerateRequest {
   type: "generate";
@@ -30,7 +54,7 @@ export interface GenerateRequest {
 
 /** A single parsed motion command, used by the visualizer. */
 export interface GMove {
-  /** 0 = rapid (G0), 1 = feed (G1) */
+  /** true = rapid (G0), false = feed (G1) */
   rapid: boolean;
   x: number;
   y: number;
@@ -44,11 +68,7 @@ export type WorkerResponse =
       type: "result";
       gcode: string;
       moves: GMove[];
-      stats: {
-        pathCount: number;
-        travelDistance: number;
-        cutDistance: number;
-      };
+      stats: JobStats;
     }
   | {
       type: "error";

@@ -1,29 +1,27 @@
 /**
- * Owns the Web Worker lifecycle and the parse->generate pipeline.
+ * Owns the Web Worker lifecycle and the geometry -> G-code pipeline.
  *
- * Flow:
- *   1. SVG flattened on the main thread (browser geometry) -> polylines.
- *   2. Polylines + params posted to the worker.
- *   3. Worker returns G-code + parsed moves + stats -> store.
+ * Two sources feed the same worker:
+ *   - "text" (primary): typed text -> opentype.js outlines -> polylines.
+ *   - "svg"  (secondary): uploaded SVG -> browser geometry -> polylines.
  *
- * The worker instance is created once and reused; each generate call is
- * debounced via a request id so stale results are ignored.
+ * In both cases the polylines (Y-up, bottom-left origin) + params are posted to
+ * the worker, which returns G-code + parsed moves + stats (incl. bounding box).
  */
 
 import { useCallback, useEffect, useRef } from "react";
 import { useMachineStore } from "./store";
 import { flattenSvg } from "./svgFlatten";
-import type { GenerateRequest, WorkerResponse } from "./types";
+import { loadFont, textToPolylines } from "./textToPaths";
+import type { GenerateRequest, Polyline, WorkerResponse } from "./types";
 
 export function useGcodeGenerator() {
   const workerRef = useRef<Worker | null>(null);
-  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    const worker = new Worker(
-      new URL("./gcode.worker.ts", import.meta.url),
-      { type: "module" },
-    );
+    const worker = new Worker(new URL("./gcode.worker.ts", import.meta.url), {
+      type: "module",
+    });
     workerRef.current = worker;
 
     worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
@@ -42,19 +40,19 @@ export function useGcodeGenerator() {
         .setError("Worker hatası: " + (e.message || "bilinmeyen"));
     };
 
+    // Warm up the font in the background so the first generate is instant.
+    loadFont().catch(() => {
+      /* surfaced on first generate attempt */
+    });
+
     return () => {
       worker.terminate();
       workerRef.current = null;
     };
   }, []);
 
-  const generate = useCallback(() => {
+  const generate = useCallback(async () => {
     const store = useMachineStore.getState();
-    const { svgText } = store;
-    if (!svgText) {
-      store.setError("Önce bir SVG dosyası yükleyin.");
-      return;
-    }
     const worker = workerRef.current;
     if (!worker) {
       store.setError("Worker hazır değil.");
@@ -62,11 +60,30 @@ export function useGcodeGenerator() {
     }
 
     const params = store.getParams();
-    requestIdRef.current += 1;
 
     try {
       store.setStatus("parsing");
-      const { polylines } = flattenSvg(svgText, params.tolerance);
+
+      let polylines: Polyline[];
+
+      if (store.mode === "svg") {
+        if (!store.svgText) {
+          store.setError("Lütfen önce bir SVG dosyası yükleyin.");
+          return;
+        }
+        polylines = flattenSvg(store.svgText, params.tolerance).polylines;
+      } else {
+        if (!store.text.trim()) {
+          store.setError("Lütfen önce bir metin girin.");
+          return;
+        }
+        const font = await loadFont();
+        polylines = textToPolylines(font, {
+          text: store.text,
+          fontSizeMm: store.fontSizeMm,
+          tolerance: params.tolerance,
+        }).polylines;
+      }
 
       store.setStatus("generating");
       const req: GenerateRequest = {
@@ -77,7 +94,7 @@ export function useGcodeGenerator() {
       worker.postMessage(req);
     } catch (err) {
       store.setError(
-        err instanceof Error ? err.message : "SVG işlenemedi.",
+        err instanceof Error ? err.message : "Geometri işlenemedi.",
       );
     }
   }, []);

@@ -1,29 +1,33 @@
 /**
  * Global state (Zustand).
  *
- * useMachineStore holds the CNC parameters and the current job state
- * (loaded SVG, generated G-code, parsed moves, stats, status, errors).
+ * useMachineStore holds the CNC parameters, the table (workspace) limits, the
+ * label text to engrave, and the current job state (generated G-code, parsed
+ * moves, stats, status, errors).
  *
- * Parameter setters accept the raw string from the inputs and coerce safely:
- * empty / non-numeric input is stored as NaN in a transient field but the
- * worker request guards against NaN, and the UI surfaces invalid fields.
+ * Parameter setters coerce input safely; the worker request additionally guards
+ * against NaN so invalid input can never corrupt the G-code.
  */
 
 import { create } from "zustand";
-import type { GMove, MachineParams } from "./types";
+import type { GMove, JobStats, MachineParams, TableLimits } from "./types";
 
 export type JobStatus = "idle" | "parsing" | "generating" | "ready" | "error";
 
-interface JobStats {
-  pathCount: number;
-  travelDistance: number;
-  cutDistance: number;
-}
+/** Which geometry source feeds the G-code generator. */
+export type SourceMode = "text" | "svg";
 
-interface MachineState extends MachineParams {
-  // Loaded source.
-  fileName: string | null;
+interface MachineState extends MachineParams, TableLimits {
+  // Active source mode (text = primary feature, svg = secondary feature).
+  mode: SourceMode;
+
+  // Label (text) source.
+  text: string;
+  fontSizeMm: number;
+
+  // SVG source.
   svgText: string | null;
+  svgFileName: string | null;
 
   // Results.
   gcode: string | null;
@@ -33,29 +37,47 @@ interface MachineState extends MachineParams {
   status: JobStatus;
   error: string | null;
 
-  // Param setters (number).
+  // Setters.
+  setMode: (mode: SourceMode) => void;
   setParam: (key: keyof MachineParams, value: number) => void;
+  setLimit: (key: keyof TableLimits, value: number) => void;
+  setText: (text: string) => void;
+  setFontSize: (size: number) => void;
+  setSvg: (fileName: string, svgText: string) => void;
+  clearSvg: () => void;
 
   // Job lifecycle.
-  setFile: (name: string, text: string) => void;
-  clearFile: () => void;
   setStatus: (status: JobStatus) => void;
   setError: (message: string | null) => void;
   setResult: (gcode: string, moves: GMove[], stats: JobStats) => void;
+  invalidateResult: () => void;
 
   getParams: () => MachineParams;
+  getLimits: () => TableLimits;
 }
 
 export const useMachineStore = create<MachineState>((set, get) => ({
-  // Defaults from the spec.
+  // CNC defaults.
   safeZ: 5,
   drawZ: 0,
   feedRate: 1000,
   travelRate: 2000,
   tolerance: 0.1,
 
-  fileName: null,
+  // Table (workspace) limits — sensible small-machine defaults.
+  maxX: 200,
+  maxY: 200,
+
+  // Source defaults.
+  mode: "text",
+
+  // Label defaults.
+  text: "ETİKET",
+  fontSizeMm: 20,
+
+  // SVG defaults.
   svgText: null,
+  svgFileName: null,
 
   gcode: null,
   moves: [],
@@ -64,12 +86,10 @@ export const useMachineStore = create<MachineState>((set, get) => ({
   status: "idle",
   error: null,
 
-  setParam: (key, value) => set({ [key]: value } as Partial<MachineState>),
-
-  setFile: (name, text) =>
+  setMode: (mode) =>
     set({
-      fileName: name,
-      svgText: text,
+      mode,
+      // Switching source clears stale output so the UI never mixes them.
       gcode: null,
       moves: [],
       stats: null,
@@ -77,9 +97,47 @@ export const useMachineStore = create<MachineState>((set, get) => ({
       error: null,
     }),
 
-  clearFile: () =>
+  setParam: (key, value) =>
+    set({ [key]: value } as Partial<MachineState>),
+
+  setLimit: (key, value) =>
+    set({ [key]: value } as Partial<MachineState>),
+
+  setText: (text) =>
     set({
-      fileName: null,
+      text,
+      // New text invalidates any previously generated result.
+      gcode: null,
+      moves: [],
+      stats: null,
+      status: "idle",
+      error: null,
+    }),
+
+  setFontSize: (fontSizeMm) =>
+    set({
+      fontSizeMm,
+      gcode: null,
+      moves: [],
+      stats: null,
+      status: "idle",
+      error: null,
+    }),
+
+  setSvg: (svgFileName, svgText) =>
+    set({
+      svgFileName,
+      svgText,
+      gcode: null,
+      moves: [],
+      stats: null,
+      status: "idle",
+      error: null,
+    }),
+
+  clearSvg: () =>
+    set({
+      svgFileName: null,
       svgText: null,
       gcode: null,
       moves: [],
@@ -96,6 +154,9 @@ export const useMachineStore = create<MachineState>((set, get) => ({
   setResult: (gcode, moves, stats) =>
     set({ gcode, moves, stats, status: "ready", error: null }),
 
+  invalidateResult: () =>
+    set({ gcode: null, moves: [], stats: null, status: "idle" }),
+
   getParams: () => {
     const s = get();
     return {
@@ -106,4 +167,26 @@ export const useMachineStore = create<MachineState>((set, get) => ({
       tolerance: s.tolerance,
     };
   },
+
+  getLimits: () => {
+    const s = get();
+    return { maxX: s.maxX, maxY: s.maxY };
+  },
 }));
+
+/**
+ * Pure helper: does the generated geometry fit inside the table limits?
+ * Returns null when there is nothing to check yet.
+ */
+export function checkWithinLimits(
+  stats: JobStats | null,
+  limits: TableLimits,
+): { ok: boolean; exceedsX: boolean; exceedsY: boolean } | null {
+  if (!stats) return null;
+  const { width, height } = stats.bbox;
+  // A tiny epsilon avoids false positives from floating-point rounding.
+  const eps = 1e-6;
+  const exceedsX = width > limits.maxX + eps;
+  const exceedsY = height > limits.maxY + eps;
+  return { ok: !exceedsX && !exceedsY, exceedsX, exceedsY };
+}
