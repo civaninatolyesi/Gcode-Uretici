@@ -268,6 +268,10 @@ export default function App() {
         <p className="text-xs text-slate-400">
           Metinden G-code üreten tarayıcı tabanlı CAM aracı
         </p>
+        <p className="mt-2 text-[11px] text-slate-500">
+          Bu araç yalnızca G-code üretir. Kesim, makine ayarları ve güvenlik
+          kontrolü tamamen kullanıcı sorumluluğundadır.
+        </p>
       </header>
 
       <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 p-6 lg:grid-cols-[380px_1fr]">
@@ -316,6 +320,12 @@ export default function App() {
             >
               G-Code İndir
             </button>
+
+            <p className="mt-3 text-[11px] leading-snug text-slate-400">
+              Lütfen bu çıktıyı kullanmadan önce makine sınırlarını, malzeme
+              koşullarını ve güvenlik gereksinimlerini kendi sorumluluğunuzda
+              doğrulayın.
+            </p>
 
             <StatsRow />
           </div>

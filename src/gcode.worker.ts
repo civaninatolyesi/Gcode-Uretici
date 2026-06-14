@@ -172,6 +172,8 @@ function generateGcode(
 
   // --- Header ---
   lines.push("; Etiket Makinesi -> G-Code | Üretildi: " + new Date().toISOString());
+  lines.push(
+    "; Bu G-code otomatik üretildi. Kesim koşulları, makine sınırları ve güvenlik kontrolü kullanıcı sorumluluğundadır.");
   lines.push("G21 ; Milimetre");
   lines.push("G90 ; Mutlak konumlandirma");
 
