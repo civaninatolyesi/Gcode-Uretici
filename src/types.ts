@@ -19,6 +19,13 @@ export interface MachineParams {
   feedRate: number;
   travelRate: number;
   tolerance: number;
+  /**
+   * Physical pen/tool tip diameter in mm. Does NOT change the G-code (the
+   * toolpath is the centerline either way); it is an advanced hint used only to
+   * draw the stroke at its true width in the simulation, so the operator can see
+   * how thick the real line will be. Default 0 = hairline preview.
+   */
+  penDiameterMm: number;
 }
 
 /** Physical workspace (table) limits in mm. */

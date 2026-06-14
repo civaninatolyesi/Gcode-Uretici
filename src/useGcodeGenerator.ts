@@ -10,9 +10,10 @@
  */
 
 import { useCallback, useEffect, useRef } from "react";
+import { getFont } from "./fonts";
 import { useMachineStore } from "./store";
 import { flattenSvg } from "./svgFlatten";
-import { loadFont, textToPolylines } from "./textToPaths";
+import { loadFont } from "./textToPaths";
 import type { GenerateRequest, Polyline, WorkerResponse } from "./types";
 
 export function useGcodeGenerator() {
@@ -77,12 +78,11 @@ export function useGcodeGenerator() {
           store.setError("Lütfen önce bir metin girin.");
           return;
         }
-        const font = await loadFont();
-        polylines = textToPolylines(font, {
+        polylines = await getFont(store.fontId).toPolylines({
           text: store.text,
           fontSizeMm: store.fontSizeMm,
           tolerance: params.tolerance,
-        }).polylines;
+        });
       }
 
       store.setStatus("generating");

@@ -8,6 +8,7 @@
  */
 
 import { useCallback } from "react";
+import { AdvancedPanel } from "./components/AdvancedPanel";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { Dropzone } from "./components/Dropzone";
 import { GCodeVisualizer } from "./components/GCodeVisualizer";
@@ -285,6 +286,8 @@ export default function App() {
           <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
             <ConfigPanel />
           </div>
+
+          <AdvancedPanel />
 
           <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
             <StatusBadge />

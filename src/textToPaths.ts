@@ -113,6 +113,49 @@ export interface TextOptions {
 }
 
 /**
+ * Shift the bounding box so the geometry sits with its bottom-left corner
+ * exactly at the origin (0,0), Y-up — the polyline contract the worker expects.
+ *
+ * `flipY` controls the vertical orientation of the SOURCE:
+ *   - true  (default): source is Y-DOWN (opentype/SVG screen convention), so we
+ *     flip it to Y-up. Flipping the wrong source would mirror the text.
+ *   - false: source is ALREADY Y-up (e.g. Hershey font), so we only translate.
+ */
+export function normalizeToOrigin(
+  polylines: Polyline[],
+  flipY = true,
+): Polyline[] {
+  const cleaned = polylines
+    .map((pl) => pl.filter((p) => isFiniteNum(p.x) && isFiniteNum(p.y)))
+    .filter((pl) => pl.length >= 1);
+
+  if (cleaned.length === 0) {
+    throw new Error("Bu metin için çizilebilir bir şekil üretilemedi.");
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pl of cleaned) {
+    for (const p of pl) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  const height = maxY - minY;
+
+  return cleaned.map((pl) =>
+    pl.map((p) => ({
+      x: p.x - minX,
+      y: flipY ? height - (p.y - minY) : p.y - minY,
+    })),
+  );
+}
+
+/**
  * Convert text into normalized polylines (mm, Y-up, bottom-left at origin).
  */
 export function textToPolylines(
@@ -187,36 +230,6 @@ export function textToPolylines(
   }
   pushCurrent();
 
-  // Filter non-finite points and drop degenerate contours.
-  const cleaned = polylines
-    .map((pl) => pl.filter((p) => isFiniteNum(p.x) && isFiniteNum(p.y)))
-    .filter((pl) => pl.length >= 1);
-
-  if (cleaned.length === 0) {
-    throw new Error("Bu metin için çizilebilir bir şekil üretilemedi.");
-  }
-
   // Flip Y (font/path space is Y-down) and shift bounding box to origin (0,0).
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const pl of cleaned) {
-    for (const p of pl) {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    }
-  }
-  const height = maxY - minY;
-
-  const normalized: Polyline[] = cleaned.map((pl) =>
-    pl.map((p) => ({
-      x: p.x - minX,
-      y: height - (p.y - minY),
-    })),
-  );
-
-  return { polylines: normalized };
+  return { polylines: normalizeToOrigin(polylines) };
 }

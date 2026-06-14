@@ -10,6 +10,7 @@
  */
 
 import { create } from "zustand";
+import { DEFAULT_FONT_ID, type FontId } from "./fonts";
 import type { GMove, JobStats, MachineParams, TableLimits } from "./types";
 
 export type JobStatus = "idle" | "parsing" | "generating" | "ready" | "error";
@@ -24,6 +25,8 @@ interface MachineState extends MachineParams, TableLimits {
   // Label (text) source.
   text: string;
   fontSizeMm: number;
+  /** Which font renders the text (outline vs. single-stroke). */
+  fontId: FontId;
 
   // SVG source.
   svgText: string | null;
@@ -43,6 +46,7 @@ interface MachineState extends MachineParams, TableLimits {
   setLimit: (key: keyof TableLimits, value: number) => void;
   setText: (text: string) => void;
   setFontSize: (size: number) => void;
+  setFontId: (fontId: FontId) => void;
   setSvg: (fileName: string, svgText: string) => void;
   clearSvg: () => void;
 
@@ -63,6 +67,7 @@ export const useMachineStore = create<MachineState>((set, get) => ({
   feedRate: 1000,
   travelRate: 2000,
   tolerance: 0.1,
+  penDiameterMm: 0,
 
   // Table (workspace) limits — sensible small-machine defaults.
   maxX: 200,
@@ -74,6 +79,7 @@ export const useMachineStore = create<MachineState>((set, get) => ({
   // Label defaults.
   text: "ETİKET",
   fontSizeMm: 20,
+  fontId: DEFAULT_FONT_ID,
 
   // SVG defaults.
   svgText: null,
@@ -124,6 +130,17 @@ export const useMachineStore = create<MachineState>((set, get) => ({
       error: null,
     }),
 
+  setFontId: (fontId) =>
+    set({
+      fontId,
+      // A different font produces different geometry, so drop stale output.
+      gcode: null,
+      moves: [],
+      stats: null,
+      status: "idle",
+      error: null,
+    }),
+
   setSvg: (svgFileName, svgText) =>
     set({
       svgFileName,
@@ -165,6 +182,7 @@ export const useMachineStore = create<MachineState>((set, get) => ({
       feedRate: s.feedRate,
       travelRate: s.travelRate,
       tolerance: s.tolerance,
+      penDiameterMm: s.penDiameterMm,
     };
   },
 

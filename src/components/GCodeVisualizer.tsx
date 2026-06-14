@@ -21,6 +21,7 @@
 
 import { useEffect, useRef } from "react";
 import { useMachineStore } from "../store";
+import { useSimPlayer } from "../useSimPlayer";
 import type { GMove } from "../types";
 
 /** Outer canvas padding that leaves room for the rulers and dimension labels. */
@@ -42,6 +43,8 @@ const COLORS = {
   dim: "#fbbf24",
   dimText: "#fde68a",
   partBox: "#38bdf8",
+  pen: "#fde047",
+  penInk: "#60a5fa",
 };
 
 interface Bounds {
@@ -86,8 +89,13 @@ export function GCodeVisualizer() {
   const stats = useMachineStore((s) => s.stats);
   const maxX = useMachineStore((s) => s.maxX);
   const maxY = useMachineStore((s) => s.maxY);
+  const penDiameterMm = useMachineStore((s) => s.penDiameterMm);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Playback: how far along the toolpath the pen currently is.
+  const player = useSimPlayer(moves);
+  const { progress, tip } = player;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -174,9 +182,28 @@ export function GCodeVisualizer() {
       drawTable(ctx, tx, ty, maxX, maxY, !fits);
 
       // ---------------------------------------------------------------------
-      // 2. Toolpath.
+      // 2. Toolpath — drawn only up to the current playback `progress`.
+      //    Each drawing (G1) segment is rendered at the REAL pen width (mm ->
+      //    px) so the operator sees how thick the physical line will be; a
+      //    pen diameter of 0 falls back to a thin preview line.
       // ---------------------------------------------------------------------
+      // Total XY length, to translate progress fraction -> a length cutoff.
+      let totalLen = 0;
+      {
+        let p: GMove | null = null;
+        for (const m of moves) {
+          if (m.zOnly || !Number.isFinite(m.x) || !Number.isFinite(m.y)) continue;
+          if (p) totalLen += Math.hypot(m.x - p.x, m.y - p.y);
+          p = m;
+        }
+      }
+      const lenCutoff = totalLen * progress;
+      const penPx = penDiameterMm > 0 ? Math.max(1, penDiameterMm * scale) : 0;
+
+      let drawn = 0;
       let prev: GMove | null = null;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       for (const m of moves) {
         if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) {
           prev = m;
@@ -187,23 +214,58 @@ export function GCodeVisualizer() {
           continue;
         }
         if (prev) {
-          ctx.beginPath();
-          ctx.moveTo(tx(prev.x), ty(prev.y));
-          ctx.lineTo(tx(m.x), ty(m.y));
-          if (m.rapid) {
-            ctx.strokeStyle = COLORS.rapid;
-            ctx.lineWidth = 1;
-            ctx.setLineDash([5, 4]);
-          } else {
-            ctx.strokeStyle = COLORS.cut;
-            ctx.lineWidth = 1.6;
-            ctx.setLineDash([]);
+          const segLen = Math.hypot(m.x - prev.x, m.y - prev.y);
+          // Clip this segment at the playback cutoff so the pen "draws" live.
+          let ex = m.x;
+          let ey = m.y;
+          let visible = true;
+          if (drawn >= lenCutoff) {
+            visible = false;
+          } else if (drawn + segLen > lenCutoff && segLen > 0) {
+            const t = (lenCutoff - drawn) / segLen;
+            ex = prev.x + (m.x - prev.x) * t;
+            ey = prev.y + (m.y - prev.y) * t;
           }
-          ctx.stroke();
+
+          if (visible) {
+            ctx.beginPath();
+            ctx.moveTo(tx(prev.x), ty(prev.y));
+            ctx.lineTo(tx(ex), ty(ey));
+            if (m.rapid) {
+              ctx.strokeStyle = COLORS.rapid;
+              ctx.lineWidth = 1;
+              ctx.setLineDash([5, 4]);
+            } else {
+              // Real-width ink when a pen diameter is set, else a thin line.
+              ctx.strokeStyle = penPx > 0 ? COLORS.penInk : COLORS.cut;
+              ctx.lineWidth = penPx > 0 ? penPx : 1.6;
+              ctx.setLineDash([]);
+            }
+            ctx.stroke();
+          }
+          drawn += segLen;
         }
         prev = m;
       }
       ctx.setLineDash([]);
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "miter";
+
+      // Moving pen-tip marker at the current playback position.
+      if (tip && progress > 0 && progress < 1) {
+        const px = tx(tip.x);
+        const py = ty(tip.y);
+        const r = penPx > 0 ? penPx / 2 : 4;
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(3, r), 0, Math.PI * 2);
+        ctx.fillStyle = tip.drawing ? COLORS.penInk : COLORS.rapid;
+        ctx.globalAlpha = 0.85;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = COLORS.pen;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
 
       // ---------------------------------------------------------------------
       // 3. Part bounding box + dimension lines (the "how big / where" answer).
@@ -411,7 +473,7 @@ export function GCodeVisualizer() {
     const ro = new ResizeObserver(() => draw());
     ro.observe(container);
     return () => ro.disconnect();
-  }, [moves, status, stats, maxX, maxY]);
+  }, [moves, status, stats, maxX, maxY, penDiameterMm, progress, tip]);
 
   // Coverage: how much of the table the part occupies (area %).
   const coverage =
@@ -461,6 +523,81 @@ export function GCodeVisualizer() {
         className="relative min-h-[360px] flex-1 overflow-hidden rounded-xl border border-slate-700 bg-slate-900"
       >
         <canvas ref={canvasRef} className="block h-full w-full" />
+      </div>
+
+      <SimControls player={player} hasPath={moves.length >= 2} />
+    </div>
+  );
+}
+
+/** Play / pause / restart + speed + scrubber for the simulation. */
+function SimControls({
+  player,
+  hasPath,
+}: {
+  player: ReturnType<typeof useSimPlayer>;
+  hasPath: boolean;
+}) {
+  const { playing, progress, speed, toggle, restart, seek, setSpeed } = player;
+  const speeds = [0.5, 1, 2, 4];
+
+  return (
+    <div
+      className={[
+        "mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2",
+        hasPath ? "" : "pointer-events-none opacity-40",
+      ].join(" ")}
+    >
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={!hasPath}
+        className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:bg-slate-700"
+        title={playing ? "Duraklat" : "Oynat"}
+      >
+        {playing ? "⏸ Duraklat" : "▶ Oynat"}
+      </button>
+      <button
+        type="button"
+        onClick={restart}
+        disabled={!hasPath}
+        className="rounded-md bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 transition hover:bg-slate-600"
+        title="Baştan oynat"
+      >
+        ⟲ Baştan
+      </button>
+
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.001}
+        value={progress}
+        onChange={(e) => seek(Number(e.target.value))}
+        disabled={!hasPath}
+        className="h-1.5 flex-1 cursor-pointer accent-blue-500"
+        aria-label="Simülasyon ilerlemesi"
+      />
+      <span className="w-10 text-right text-xs tabular-nums text-slate-300">
+        %{Math.round(progress * 100)}
+      </span>
+
+      <div className="flex items-center gap-1">
+        {speeds.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSpeed(s)}
+            className={[
+              "rounded px-2 py-1 text-xs font-medium transition",
+              speed === s
+                ? "bg-blue-600 text-white"
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600",
+            ].join(" ")}
+          >
+            {s}×
+          </button>
+        ))}
       </div>
     </div>
   );

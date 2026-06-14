@@ -17,7 +17,11 @@ sorusunun cevabını verir. Önce hızlı haritaya bak, sonra ilgili reçeteye g
 | [src/store.ts](../src/store.ts) | Zustand global durum + `checkWithinLimits` | ana |
 | [src/types.ts](../src/types.ts) | **Ana↔worker sözleşmesi** (tüm paylaşılan tipler) | ortak |
 | [src/useGcodeGenerator.ts](../src/useGcodeGenerator.ts) | Worker yaşam döngüsü + `generate()` orkestrasyonu | ana |
-| [src/textToPaths.ts](../src/textToPaths.ts) | Metin → polyline (opentype.js) | ana |
+| [src/textToPaths.ts](../src/textToPaths.ts) | Metin → polyline (opentype.js) + `normalizeToOrigin` (paylaşılan) | ana |
+| [src/fonts/index.ts](../src/fonts/index.ts) | **Font kayıt defteri** (`FontProvider` arayüzü + registry) | ana |
+| [src/fonts/hersheyData.ts](../src/fonts/hersheyData.ts) | Tek-çizgi (Hershey) glyph verisi (gömülü) | ana |
+| [src/fonts/hersheyFont.ts](../src/fonts/hersheyFont.ts) | Hershey metin dizilimi → ham polyline | ana |
+| [src/useSimPlayer.ts](../src/useSimPlayer.ts) | Simülasyon oynatma (oynat/duraklat/hız/ilerleme) | ana |
 | [src/svgFlatten.ts](../src/svgFlatten.ts) | SVG → polyline (tarayıcı geometri motoru) | ana |
 | [src/gcode.worker.ts](../src/gcode.worker.ts) | NN sıralama + G-code + bbox + moves | **worker** |
 | [src/components/TextInputPanel.tsx](../src/components/TextInputPanel.tsx) | Metin + yazı boyutu girişi | ana |
@@ -83,14 +87,35 @@ Mevcut iki kaynağı (text/svg) örnek al:
 Worker, güvenlik ve simülasyon **hiç değişmez** — hepsi sadece polyline görür.
 → Tasarım: [ADR-0007](./adr/0007-iki-kaynak-modu.md).
 
-### 🟢 Varsayılan fontu değiştirmek / yeni font eklemek
+### 🟢 Yeni bir yazı tipi eklemek (outline veya tek-çizgi)
 
-1. `.ttf` / `.otf` dosyasını [public/fonts/](../public/fonts/) içine koy.
-2. [src/textToPaths.ts](../src/textToPaths.ts) → `FONT_URL`'i güncelle.
-3. Çoklu font istiyorsan: store'a `fontUrl` ekle, `loadFont()`'u parametrik yap
-   (şu an tek font cache'liyor).
-- **Önemli:** opentype.js import'u `import * as opentype` olmalı (default export
-  yok). → [ADR-0004](./adr/0004-metin-yol-opentype.md).
+Fontlar [src/fonts/index.ts](../src/fonts/index.ts) içindeki `FONTS` kayıt
+defterinde toplanır; her font `FontProvider` arayüzünü uygular. Açık/Kapalı:
+yeni font = yeni provider, çağıran hiçbir yer (store/generator/UI) değişmez.
+
+- **Outline (TTF) font:** `.ttf`'i [public/fonts/](../public/fonts/) içine koy,
+  yeni bir provider ekle (`toPolylines` → `loadFont` benzeri + `textToPolylines`).
+  opentype.js import'u `import * as opentype` olmalı (default export yok).
+  → [ADR-0004](./adr/0004-metin-yol-opentype.md).
+- **Tek-çizgi (Hershey) font:** glyph verisini
+  [src/fonts/hersheyData.ts](../src/fonts/hersheyData.ts) biçiminde gömüp bir
+  provider ekle. Tek-çizgi fontlar kalın kalem için harfin **ortasından** geçer
+  ve çok daha az G-code üretir.
+- Her provider çıktısını `normalizeToOrigin` ile aynı sözleşmeye sokar (mm,
+  Y-yukarı, sol-alt (0,0)) — worker/güvenlik/simülasyon değişmez.
+- Yeni `FontId`'yi [src/store.ts](../src/store.ts)'deki birleşim tipine TS
+  zaten zorlar; UI seçimi [AdvancedPanel](../src/components/AdvancedPanel.tsx)
+  otomatik listeler.
+
+### 🟢 Kalem ucu kalınlığı / simülasyon oynatma
+
+- **Kalem ucu:** `penDiameterMm` bir `MachineParams` alanıdır ama **G-code'u
+  değiştirmez** — yalnızca [GCodeVisualizer](../src/components/GCodeVisualizer.tsx)
+  çizgiyi gerçek mm genişlikte çizmek için kullanır. Yeni parametre reçetesini
+  izler ama worker'da kullanılmaz.
+- **Oynatma:** zaman/ilerleme mantığı tek yerde,
+  [src/useSimPlayer.ts](../src/useSimPlayer.ts) (kümülatif yol uzunluğu →
+  ilerleme [0,1] + interpolasyonlu uç konumu). Görsel çizim Visualizer'da.
 
 ### 🟢 Yeni bir SVG ilkel/öznitelik desteklemek
 
