@@ -412,8 +412,8 @@ export default function App() {
             lets the canvas/long G-code push the `1fr` column wider than its
             track and overflow the viewport (worst exactly at the lg breakpoint).
             min-w-0 lets the column shrink to its track. */}
-        <section className="flex min-h-0 min-w-0 flex-col gap-4 lg:h-full">
-          <div className="flex min-h-[520px] flex-1 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:min-h-0">
+        <section className="flex min-w-0 flex-col gap-4">
+          <div className="flex min-h-[70vh] flex-1 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
             <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">
               Tabla Önizleme & G-Code Simülasyonu
             </h2>
