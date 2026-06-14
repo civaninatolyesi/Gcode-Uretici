@@ -205,16 +205,22 @@ function accentStrokes(kind: AccentKind, minX: number, maxX: number): number[][]
   }
 }
 
-let parsed: Record<string, HersheyGlyph> | null = null;
-
-/** Parse the compact table once into structured glyphs (incl. Turkish). */
-export function getHersheyGlyphs(): Record<string, HersheyGlyph> {
-  if (parsed) return parsed;
+/**
+ * Build a full structured glyph table (ASCII + Turkish) from a compact RAW map.
+ *
+ * The Turkish-letter composition (base glyph + accent stroke) and the parsing
+ * are font-agnostic, so every Hershey style we ship reuses this exact logic and
+ * therefore gets correct ç/ğ/ı/İ/ö/ş/ü "for free" — there is no per-font Turkish
+ * work to forget. Pass a different RAW table to get a different style.
+ */
+export function buildGlyphTable(
+  raw: Record<string, [number, string]>,
+): Record<string, HersheyGlyph> {
   const out: Record<string, HersheyGlyph> = {};
 
   // 1. Base ASCII glyphs.
-  for (const ch of Object.keys(RAW)) {
-    const [advance, body] = RAW[ch];
+  for (const ch of Object.keys(raw)) {
+    const [advance, body] = raw[ch];
     out[ch] = { advance, strokes: parseBody(body) };
   }
 
@@ -225,6 +231,7 @@ export function getHersheyGlyphs(): Record<string, HersheyGlyph> {
     // Special case ı: lowercase "i" without its dot (drop the top dot stroke).
     if (ch === "ı") {
       const i = out["i"];
+      if (!i) continue;
       // "i" data: first stroke is the dot, second is the stem. Keep the stem.
       const stem = i.strokes[i.strokes.length - 1];
       out[ch] = { advance: i.advance, strokes: [stem.map(([x, y]) => [x, y])] };
@@ -241,6 +248,13 @@ export function getHersheyGlyphs(): Record<string, HersheyGlyph> {
     };
   }
 
-  parsed = out;
   return out;
+}
+
+let parsed: Record<string, HersheyGlyph> | null = null;
+
+/** Parse the compact "simplex" table once into structured glyphs (incl. Turkish). */
+export function getHersheyGlyphs(): Record<string, HersheyGlyph> {
+  if (!parsed) parsed = buildGlyphTable(RAW);
+  return parsed;
 }

@@ -58,6 +58,7 @@ function StatusBadge() {
     generating: { label: "G-code üretiliyor…", cls: "bg-amber-600 text-white" },
     ready: { label: "Tamamlandı", cls: "bg-green-600 text-white" },
     error: { label: "Hata", cls: "bg-red-600 text-white" },
+    stale: { label: "Güncel değil", cls: "bg-amber-600 text-white" },
   };
   const s = map[status] ?? map.idle;
 
@@ -216,9 +217,24 @@ function StatsRow() {
   );
 }
 
-export default function App() {
-  const { generate } = useGcodeGenerator();
-
+/**
+ * Sticky control bar — always visible at the top of the viewport so the user
+ * never has to scroll to find "Üret" / "İndir". It also carries the
+ * safety-critical "settings changed, regenerate" warning and the download
+ * lock: the download button is disabled the instant any setting changes and
+ * only re-enables after a fresh, in-bounds generation.
+ */
+function ActionBar({
+  onGenerate,
+  onDownload,
+  onFit,
+  fitting,
+}: {
+  onGenerate: () => void;
+  onDownload: () => void;
+  onFit: () => void;
+  fitting: boolean;
+}) {
   const mode = useMachineStore((s) => s.mode);
   const text = useMachineStore((s) => s.text);
   const svgText = useMachineStore((s) => s.svgText);
@@ -227,17 +243,99 @@ export default function App() {
   const maxX = useMachineStore((s) => s.maxX);
   const maxY = useMachineStore((s) => s.maxY);
   const status = useMachineStore((s) => s.status);
+  const stale = useMachineStore((s) => s.stale);
 
   const busy = status === "parsing" || status === "generating";
   const hasInput = mode === "svg" ? !!svgText : !!text.trim();
 
   const check = checkWithinLimits(stats, { maxX, maxY });
   const withinLimits = check?.ok ?? false;
-  const canDownload = !!gcode && withinLimits;
+  // The download is allowed ONLY when there is a fresh result that fits the
+  // table. Any setting change nulls `gcode` (and sets `stale`), so this turns
+  // false immediately — the core "never download stale G-code" guarantee.
+  const canDownload = !!gcode && withinLimits && !stale;
+
+  return (
+    <div className="sticky top-0 z-50 border-b border-slate-800 bg-slate-900/95 backdrop-blur supports-[backdrop-filter]:bg-slate-900/80">
+      <div className="mx-auto flex max-w-[1800px] flex-col gap-3 px-4 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="mr-2 hidden flex-col leading-tight sm:flex">
+            <span className="text-sm font-bold tracking-tight text-slate-100">
+              CNC Etiket Makinesi
+            </span>
+            <span className="text-[11px] text-slate-500">
+              Metinden / SVG'den G-code
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={!hasInput || busy}
+            className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+          >
+            {busy ? "İşleniyor…" : "⚙ G-Code Üret"}
+          </button>
+
+          {mode === "text" && (
+            <button
+              type="button"
+              onClick={onFit}
+              disabled={!hasInput || busy || fitting}
+              className="rounded-lg bg-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+              title="Yazı boyutunu tabla sınırlarına sığacak şekilde otomatik ayarla"
+            >
+              {fitting ? "Hesaplanıyor…" : "⤢ Tablaya Sığdır"}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={!canDownload}
+            className="rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+            title={
+              !gcode
+                ? "Önce G-code üretin"
+                : stale
+                  ? "Ayarlar değişti — önce G-code'u yeniden üretin"
+                  : !withinLimits
+                    ? "Tabla sınırları aşıldığı için indirme devre dışı"
+                    : "G-code dosyasını indir"
+            }
+          >
+            ⬇ G-Code İndir
+          </button>
+
+          <div className="ml-auto">
+            <StatusBadge />
+          </div>
+        </div>
+
+        {/* Safety-critical warning: settings changed after a generation. */}
+        {stale && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-500 bg-amber-950/60 px-4 py-2 text-sm font-medium text-amber-200">
+            <span className="text-lg leading-none">⚠️</span>
+            <span>
+              Ayarlar değiştirildi, lütfen G-Code'u yeniden üretin! Mevcut çıktı
+              artık geçerli değil ve indirme kilitlendi.
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const { generate, fitToWorkspace, fitting } = useGcodeGenerator();
+
+  const mode = useMachineStore((s) => s.mode);
+  const gcode = useMachineStore((s) => s.gcode);
 
   const handleDownload = useCallback(() => {
     const s = useMachineStore.getState();
-    if (!s.gcode) return;
+    if (!s.gcode || s.stale) return;
     // Final guard: never let an out-of-bounds program leave the app.
     const c = checkWithinLimits(s.stats, { maxX: s.maxX, maxY: s.maxY });
     if (!c?.ok) return;
@@ -261,23 +359,20 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-900/60 px-6 py-4">
-        <h1 className="text-xl font-bold tracking-tight">
-          CNC Etiket Makinesi
-        </h1>
-        <p className="text-xs text-slate-400">
-          Metinden G-code üreten tarayıcı tabanlı CAM aracı
-        </p>
-        <p className="mt-2 text-[11px] text-slate-500">
-          Bu araç yalnızca G-code üretir. Kesim, makine ayarları ve güvenlik
-          kontrolü tamamen kullanıcı sorumluluğundadır.
-        </p>
-      </header>
+    // Full-viewport flex column: the action bar stays pinned, and the body
+    // fills the rest of the screen so the simulation can use the full height.
+    <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
+      <ActionBar
+        onGenerate={generate}
+        onDownload={handleDownload}
+        onFit={fitToWorkspace}
+        fitting={fitting}
+      />
 
-      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 p-6 lg:grid-cols-[380px_1fr]">
-        {/* Left: controls */}
-        <section className="space-y-6">
+      {/* Body: two columns on desktop, filling the remaining viewport height. */}
+      <main className="mx-auto grid min-h-0 w-full max-w-[1800px] flex-1 grid-cols-1 gap-6 overflow-y-auto p-4 sm:p-6 lg:grid-cols-[380px_1fr] lg:overflow-hidden">
+        {/* Left: controls (scrolls independently on desktop). */}
+        <section className="space-y-6 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
           <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
             <ModeSwitch />
             {mode === "svg" ? <Dropzone /> : <TextInputPanel />}
@@ -290,17 +385,6 @@ export default function App() {
           <AdvancedPanel />
 
           <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-            <StatusBadge />
-
-            <button
-              type="button"
-              onClick={generate}
-              disabled={!hasInput || busy}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-            >
-              {busy ? "İşleniyor…" : "G-Code Üret"}
-            </button>
-
             <div>
               <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">
                 Fiziksel Boyut & Güvenlik
@@ -308,23 +392,7 @@ export default function App() {
               <DimensionPanel />
             </div>
 
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={!canDownload}
-              className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-              title={
-                !gcode
-                  ? "Önce G-code üretin"
-                  : !withinLimits
-                    ? "Tabla sınırları aşıldığı için indirme devre dışı"
-                    : "G-code dosyasını indir"
-              }
-            >
-              G-Code İndir
-            </button>
-
-            <p className="mt-3 text-[11px] leading-snug text-slate-400">
+            <p className="text-[11px] leading-snug text-slate-400">
               Lütfen bu çıktıyı kullanmadan önce makine sınırlarını, malzeme
               koşullarını ve güvenlik gereksinimlerini kendi sorumluluğunuzda
               doğrulayın.
@@ -334,9 +402,9 @@ export default function App() {
           </div>
         </section>
 
-        {/* Right: visualizer + raw output */}
-        <section className="flex flex-col gap-6">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
+        {/* Right: visualizer + raw output — fills the full viewport height. */}
+        <section className="flex min-h-0 flex-col gap-4 lg:h-full">
+          <div className="flex min-h-[360px] flex-1 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:min-h-0">
             <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">
               Tabla Önizleme & G-Code Simülasyonu
             </h2>
@@ -344,17 +412,17 @@ export default function App() {
               Çizim, makine tablasının üzerinde gerçek oran ve konumuyla
               gösterilir. Tabla kenarındaki sayılar milimetredir.
             </p>
-            <div className="h-[480px]">
+            <div className="min-h-0 flex-1">
               <GCodeVisualizer />
             </div>
           </div>
 
           {gcode && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
+            <div className="flex max-h-[40vh] shrink-0 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:max-h-[32vh]">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
                 Üretilen G-Code
               </h2>
-              <pre className="max-h-72 overflow-auto rounded-lg bg-slate-950 p-4 text-xs leading-relaxed text-slate-300">
+              <pre className="min-h-0 flex-1 overflow-auto rounded-lg bg-slate-950 p-4 text-xs leading-relaxed text-slate-300">
                 {gcode}
               </pre>
             </div>

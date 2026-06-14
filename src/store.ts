@@ -13,7 +13,13 @@ import { create } from "zustand";
 import { DEFAULT_FONT_ID, type FontId } from "./fonts";
 import type { GMove, JobStats, MachineParams, TableLimits } from "./types";
 
-export type JobStatus = "idle" | "parsing" | "generating" | "ready" | "error";
+export type JobStatus =
+  | "idle"
+  | "parsing"
+  | "generating"
+  | "ready"
+  | "error"
+  | "stale";
 
 /** Which geometry source feeds the G-code generator. */
 export type SourceMode = "text" | "svg";
@@ -40,6 +46,13 @@ interface MachineState extends MachineParams, TableLimits {
   status: JobStatus;
   error: string | null;
 
+  /**
+   * True when the user changed a setting AFTER generating G-code, so the
+   * on-screen output no longer matches the current settings. The download is
+   * locked and a warning is shown until "G-Code Üret" is pressed again.
+   */
+  stale: boolean;
+
   // Setters.
   setMode: (mode: SourceMode) => void;
   setParam: (key: keyof MachineParams, value: number) => void;
@@ -58,6 +71,35 @@ interface MachineState extends MachineParams, TableLimits {
 
   getParams: () => MachineParams;
   getLimits: () => TableLimits;
+}
+
+/**
+ * Compute the state patch that invalidates a generated result. Shared by every
+ * setting setter so the rule is enforced in exactly one place: drop the stale
+ * G-code/moves/stats, and — if a result actually existed — flip into the
+ * "stale" status so the UI shows the "ayarlar değişti, yeniden üretin" warning
+ * and keeps the download locked. If nothing was generated yet, stay idle.
+ */
+function invalidate(s: {
+  gcode: string | null;
+  status: JobStatus;
+}): {
+  gcode: null;
+  moves: GMove[];
+  stats: null;
+  status: JobStatus;
+  error: null;
+  stale: boolean;
+} {
+  const hadResult = s.gcode !== null;
+  return {
+    gcode: null,
+    moves: [],
+    stats: null,
+    status: hadResult ? "stale" : "idle",
+    error: null,
+    stale: hadResult,
+  };
 }
 
 export const useMachineStore = create<MachineState>((set, get) => ({
@@ -91,6 +133,7 @@ export const useMachineStore = create<MachineState>((set, get) => ({
 
   status: "idle",
   error: null,
+  stale: false,
 
   setMode: (mode) =>
     set({
@@ -101,67 +144,36 @@ export const useMachineStore = create<MachineState>((set, get) => ({
       stats: null,
       status: "idle",
       error: null,
+      stale: false,
     }),
 
+  /**
+   * SAFETY-CRITICAL: changing ANY machine parameter (Safe Z, Draw Z, feed
+   * rates, tolerance…) means the G-code currently on screen no longer matches
+   * the settings. We must invalidate it so the user cannot download a program
+   * that, e.g., still plunges to the old Z. `invalidate` decides whether to
+   * mark the output stale (a result existed → warn + lock download) or simply
+   * stay idle (nothing was generated yet).
+   */
   setParam: (key, value) =>
-    set({ [key]: value } as Partial<MachineState>),
+    set((s) => ({ [key]: value, ...invalidate(s) }) as Partial<MachineState>),
 
+  // Changing a table limit (Max X/Y) likewise invalidates the result: the
+  // fit check and the download guard both depend on it.
   setLimit: (key, value) =>
-    set({ [key]: value } as Partial<MachineState>),
+    set((s) => ({ [key]: value, ...invalidate(s) }) as Partial<MachineState>),
 
-  setText: (text) =>
-    set({
-      text,
-      // New text invalidates any previously generated result.
-      gcode: null,
-      moves: [],
-      stats: null,
-      status: "idle",
-      error: null,
-    }),
+  setText: (text) => set((s) => ({ text, ...invalidate(s) })),
 
-  setFontSize: (fontSizeMm) =>
-    set({
-      fontSizeMm,
-      gcode: null,
-      moves: [],
-      stats: null,
-      status: "idle",
-      error: null,
-    }),
+  setFontSize: (fontSizeMm) => set((s) => ({ fontSizeMm, ...invalidate(s) })),
 
-  setFontId: (fontId) =>
-    set({
-      fontId,
-      // A different font produces different geometry, so drop stale output.
-      gcode: null,
-      moves: [],
-      stats: null,
-      status: "idle",
-      error: null,
-    }),
+  setFontId: (fontId) => set((s) => ({ fontId, ...invalidate(s) })),
 
   setSvg: (svgFileName, svgText) =>
-    set({
-      svgFileName,
-      svgText,
-      gcode: null,
-      moves: [],
-      stats: null,
-      status: "idle",
-      error: null,
-    }),
+    set((s) => ({ svgFileName, svgText, ...invalidate(s) })),
 
   clearSvg: () =>
-    set({
-      svgFileName: null,
-      svgText: null,
-      gcode: null,
-      moves: [],
-      stats: null,
-      status: "idle",
-      error: null,
-    }),
+    set((s) => ({ svgFileName: null, svgText: null, ...invalidate(s) })),
 
   setStatus: (status) => set({ status }),
 
@@ -169,10 +181,10 @@ export const useMachineStore = create<MachineState>((set, get) => ({
     set({ error: message, status: message ? "error" : "idle" }),
 
   setResult: (gcode, moves, stats) =>
-    set({ gcode, moves, stats, status: "ready", error: null }),
+    set({ gcode, moves, stats, status: "ready", error: null, stale: false }),
 
   invalidateResult: () =>
-    set({ gcode: null, moves: [], stats: null, status: "idle" }),
+    set({ gcode: null, moves: [], stats: null, status: "idle", stale: false }),
 
   getParams: () => {
     const s = get();

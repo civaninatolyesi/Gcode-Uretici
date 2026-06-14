@@ -10,6 +10,7 @@
 
 import type { Point, Polyline } from "../types";
 import type { FontTextOptions } from "./index";
+import type { HersheyGlyph } from "./hersheyData";
 import { getHersheyGlyphs } from "./hersheyData";
 
 /** Extra spacing between glyphs, in font units (small, for legibility). */
@@ -19,7 +20,15 @@ function isFiniteNum(n: number): boolean {
   return typeof n === "number" && Number.isFinite(n);
 }
 
-export function buildHersheyPolylines(opts: FontTextOptions): Polyline[] {
+/**
+ * Lay out a string with ANY Hershey-style glyph table. All single-stroke styles
+ * we ship (simplex, script, gothic…) share this layout/scaling code and differ
+ * only in the `glyphs` table passed in — so adding a style is just data.
+ */
+export function buildHersheyPolylines(
+  opts: FontTextOptions,
+  glyphs: Record<string, HersheyGlyph> = getHersheyGlyphs(),
+): Polyline[] {
   const { text, fontSizeMm } = opts;
   if (!text.trim()) {
     throw new Error("Lütfen metin girin.");
@@ -27,8 +36,6 @@ export function buildHersheyPolylines(opts: FontTextOptions): Polyline[] {
   if (!isFiniteNum(fontSizeMm) || fontSizeMm <= 0) {
     throw new Error("Yazı boyutu 0'dan büyük olmalıdır.");
   }
-
-  const glyphs = getHersheyGlyphs();
 
   // 1) Lay out the text in raw font units (Y-up, baseline at 0). Coordinates
   //    are validated here so a malformed glyph can never leak a NaN downstream.

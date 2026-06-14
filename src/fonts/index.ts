@@ -17,8 +17,14 @@
 import { loadFont, normalizeToOrigin, textToPolylines } from "../textToPaths";
 import type { Polyline } from "../types";
 import { buildHersheyPolylines } from "./hersheyFont";
+import { getGothicGlyphs } from "./hersheyGothic";
+import { getScriptGlyphs } from "./hersheyScript";
 
-export type FontId = "roboto" | "hershey-simplex";
+export type FontId =
+  | "roboto"
+  | "hershey-simplex"
+  | "hershey-script"
+  | "hershey-gothic";
 
 export interface FontTextOptions {
   text: string;
@@ -64,11 +70,68 @@ const hersheyProvider: FontProvider = {
   },
 };
 
+const scriptProvider: FontProvider = {
+  id: "hershey-script",
+  label: "El Yazısı (Script)",
+  description:
+    "Akıcı, eğik el yazısı. Tek çizgi: kalın kalem için ideal, az G-code.",
+  singleStroke: true,
+  async toPolylines(opts) {
+    return normalizeToOrigin(buildHersheyPolylines(opts, getScriptGlyphs()), false);
+  },
+};
+
+const gothicProvider: FontProvider = {
+  id: "hershey-gothic",
+  label: "Gotik Blok (Gothic)",
+  description:
+    "Eski tarz, kalın görünümlü dekoratif blok harfler. Tek çizgi, az G-code.",
+  singleStroke: true,
+  async toPolylines(opts) {
+    return normalizeToOrigin(buildHersheyPolylines(opts, getGothicGlyphs()), false);
+  },
+};
+
 /** All available fonts, in display order. */
-export const FONTS: readonly FontProvider[] = [robotoProvider, hersheyProvider];
+export const FONTS: readonly FontProvider[] = [
+  robotoProvider,
+  hersheyProvider,
+  scriptProvider,
+  gothicProvider,
+];
 
 export const DEFAULT_FONT_ID: FontId = "roboto";
 
 export function getFont(id: FontId): FontProvider {
   return FONTS.find((f) => f.id === id) ?? robotoProvider;
+}
+
+/**
+ * Measure the bounding box (in mm) that a string occupies at a given font
+ * size, by running the SAME pipeline that generates the toolpath. Returns the
+ * width/height the text would draw — used by "Tablaya Sığdır" to back-solve a
+ * font size from the desired physical size.
+ */
+export async function measureTextSize(
+  fontId: FontId,
+  opts: FontTextOptions,
+): Promise<{ width: number; height: number }> {
+  const polylines = await getFont(fontId).toPolylines(opts);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pl of polylines) {
+    for (const p of pl) {
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    throw new Error("Bu metin için ölçülebilir bir şekil üretilemedi.");
+  }
+  return { width: maxX - minX, height: maxY - minY };
 }
