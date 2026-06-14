@@ -57,7 +57,9 @@ Kullanıcı **"G-Code Üret"**'e bastığında:
 2. Store'dan `mode`, girdi ve parametreler okunur. Durum → `"parsing"`.
 3. **Kaynağa göre polyline üretimi (ANA THREAD)** — DOM gerektiği için
    worker'da yapılamaz:
-   - `mode === "text"` → `textToPolylines()` ([textToPaths.ts](../src/textToPaths.ts))
+   - `mode === "text"` → `layoutTextToPolylines()` ([textLayout.ts](../src/textLayout.ts))
+     çok satır + çoklu blok + çerçeve + ızgara kopyayı birleştirir, ardından
+     `layout.stretchX / stretchY` ile eksene özel ölçekleme uygular.
    - `mode === "svg"`  → `flattenSvg()` ([svgFlatten.ts](../src/svgFlatten.ts))
    - **Çıktı sözleşmesi (her iki kaynak için aynı):** mm cinsinden, Y-yukarı,
      sınırlayıcı kutu **sol-alt köşesi (0,0)**.

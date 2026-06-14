@@ -108,12 +108,13 @@ yeni font = yeni provider, çağıran hiçbir yer (store/generator/UI) değişme
   zaten zorlar; UI seçimi [AdvancedPanel](../src/components/AdvancedPanel.tsx)
   otomatik listeler.
 
-### 🟢 Etiket düzeni: çok satır, çoklu etiket, çerçeve
+### 🟢 Etiket düzeni: çok satır, çoklu etiket, çerçeve, eksen ölçekleme
 
 Tüm kompozisyon **tek yerde**: [src/textLayout.ts](../src/textLayout.ts).
 Font sağlayıcıları yalnızca **tek bir metin parçasını** polyline'a çevirir;
-`layoutTextToPolylines` bunları üst üste/yan yana dizer ve çerçeveler. Worker,
-güvenlik ve simülasyon hiç değişmez — hepsi sadece normalize polyline görür.
+`layoutTextToPolylines` bunları üst üste/yan yana dizer, çerçeveler ve eksene
+özel ölçekleme uygular. Worker, güvenlik ve simülasyon hiç değişmez — hepsi
+sadece normalize polyline görür.
 
 - **Çok satır:** `Enter` → alt satır. `splitIntoBlocks` metni satırlara böler;
   `buildBlock` satırları `lineSpacing × fontSize` adımıyla aşağı istifler.
@@ -125,11 +126,18 @@ güvenlik ve simülasyon hiç değişmez — hepsi sadece normalize polyline gö
   ve `framePaddingMm` (null = otomatik, yazı boyutunun %40'ı). Yeni stil eklemek
   = `buildFrame`'e bir dal + `FrameStyle` birleşimine bir değer + `FrameChooser`
   butonu.
-- **Durum:** alanlar [src/types.ts](../src/types.ts) `LabelLayout` içinde, tek
-  `layout` nesnesi olarak store'da; `setLayout(patch)` ile güncellenir ve
-  **sonucu geçersiz kılar** (geometri değiştiği için). UI:
+- **Eksen ölçekleme:** `layout.stretchX` ve `layout.stretchY` (1.0 = değişmez,
+  2.0 = iki kat). Normalleştirme sonrası, worker'a gitmeden önce tüm
+  polyline koordinatları `p.x * stretchX, p.y * stretchY` ile çarpılır. Bu,
+  yazı metriklerini bozmadan fiziksel G-code boyutunu bağımsız olarak ayarlar.
+  UI: [AdvancedPanel](../src/components/AdvancedPanel.tsx) → "Yazı Genişletme /
+  Daraltma" bölümü (% olarak girilir, 100 = orijinal). "Tablaya Sığdır"
+  kullanıldığında stretch sıfırlanmaz — ölçek üstüne uygulanmaya devam eder.
+- **Durum:** tüm düzen alanları [src/types.ts](../src/types.ts) `LabelLayout`
+  içinde, tek `layout` nesnesi olarak store'da; `setLayout(patch)` ile güncellenir
+  ve **sonucu geçersiz kılar** (geometri değiştiği için). UI:
   [TextInputPanel](../src/components/TextInputPanel.tsx) (metin + ipucu) ve
-  [AdvancedPanel](../src/components/AdvancedPanel.tsx) (çerçeve/aralık/ızgara).
+  [AdvancedPanel](../src/components/AdvancedPanel.tsx) (çerçeve/aralık/ızgara/ölçek).
 - **"Tablaya Sığdır"** layout'un tamamını referans boyutta ölçer
   ([useGcodeGenerator.ts](../src/useGcodeGenerator.ts)), böylece çerçeve ve
   kopyalar da hesaba katılır.

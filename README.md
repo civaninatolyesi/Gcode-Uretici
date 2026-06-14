@@ -26,6 +26,9 @@ sınırlarıyla kontrol eder. CNC çizici / plotter / kalem-plotter için tasarl
   tablanın gerçek boyutu.
 - �🛡️ **Makine güvenliği**: her X/Y'den önce Güvenli Z, yol sonunda anında geri
   çekilme, `NaN` koruması.
+- ↔️ **Bağımsız X/Y ölçekleme**: yazıyı yalnızca yatayda veya yalnızca dikeyde
+  gerin/daraltın — glyph metrikleri bozulmaz, G-code fiziksel koordinatlar
+  doğrudan ölçeklenir.
 - 🇹🇷 Tamamen Türkçe, responsive arayüz.
 
 ## Hızlı başlangıç
