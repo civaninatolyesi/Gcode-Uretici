@@ -53,6 +53,8 @@ interface MachineState extends MachineParams, TableLimits {
 
   // Results.
   gcode: string | null;
+  /** User-edited version of gcode (for the editor). If null, use gcode. */
+  editedGCode: string | null;
   moves: GMove[];
   stats: JobStats | null;
 
@@ -83,6 +85,7 @@ interface MachineState extends MachineParams, TableLimits {
   setError: (message: string | null) => void;
   setResult: (gcode: string, moves: GMove[], stats: JobStats) => void;
   invalidateResult: () => void;
+  setEditedGCode: (gcode: string) => void;
 
   getParams: () => MachineParams;
   getLimits: () => TableLimits;
@@ -238,6 +241,7 @@ function invalidate(s: {
   status: JobStatus;
   error: null;
   stale: boolean;
+  editedGCode: null;
 } {
   const hadResult = s.gcode !== null;
   return {
@@ -247,6 +251,7 @@ function invalidate(s: {
     status: hadResult ? "stale" : "idle",
     error: null,
     stale: hadResult,
+    editedGCode: null,
   };
 }
 
@@ -284,6 +289,7 @@ export const useMachineStore = create<MachineState>((set, get) => ({
     status: "idle",
     error: null,
     stale: false,
+    editedGCode: null,
   },
   ...persistedSettings,
   // Guard: a persisted payload must never leave `layout` undefined (every
@@ -301,6 +307,7 @@ export const useMachineStore = create<MachineState>((set, get) => ({
       status: "idle",
       error: null,
       stale: false,
+      editedGCode: null,
     }),
 
   /**
@@ -342,10 +349,12 @@ export const useMachineStore = create<MachineState>((set, get) => ({
     set({ error: message, status: message ? "error" : "idle" }),
 
   setResult: (gcode, moves, stats) =>
-    set({ gcode, moves, stats, status: "ready", error: null, stale: false }),
+    set({ gcode, moves, stats, status: "ready", error: null, stale: false, editedGCode: null }),
 
   invalidateResult: () =>
     set({ gcode: null, moves: [], stats: null, status: "idle", stale: false }),
+
+  setEditedGCode: (editedGCode) => set({ editedGCode }),
 
   getParams: () => {
     const s = get();

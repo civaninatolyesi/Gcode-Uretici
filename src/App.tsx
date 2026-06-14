@@ -12,6 +12,7 @@ import { AdvancedPanel } from "./components/AdvancedPanel";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { Dropzone } from "./components/Dropzone";
 import { GCodeVisualizer } from "./components/GCodeVisualizer";
+import { GCodeEditor } from "./components/GCodeEditor";
 import { TextInputPanel } from "./components/TextInputPanel";
 import { checkWithinLimits, useMachineStore } from "./store";
 import type { SourceMode } from "./store";
@@ -340,7 +341,10 @@ export default function App() {
     const c = checkWithinLimits(s.stats, { maxX: s.maxX, maxY: s.maxY });
     if (!c?.ok) return;
 
-    const blob = new Blob([s.gcode], { type: "text/plain;charset=utf-8" });
+    // Use edited version if available, otherwise use original
+    const gcodeToDownload = s.editedGCode || s.gcode;
+
+    const blob = new Blob([gcodeToDownload], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const rawName =
@@ -423,13 +427,11 @@ export default function App() {
           </div>
 
           {gcode && (
-            <div className="flex max-h-[34vh] shrink-0 flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:max-h-[24vh]">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-                Üretilen G-Code
-              </h2>
-              <pre className="min-h-0 flex-1 overflow-auto rounded-lg bg-slate-950 p-4 text-xs leading-relaxed text-slate-300">
-                {gcode}
-              </pre>
+            <div className="flex h-[420px] max-h-[45vh] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
+              <GCodeEditor
+                originalGCode={gcode}
+                onGCodeChange={(newGCode) => useMachineStore.setState({ editedGCode: newGCode })}
+              />
             </div>
           )}
         </section>
