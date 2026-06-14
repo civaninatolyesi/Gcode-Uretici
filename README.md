@@ -20,7 +20,11 @@ sınırlarıyla kontrol eder. CNC çizici / plotter / kalem-plotter için tasarl
 - 📐 **Canlı fiziksel boyut + tabla sınırı güvenliği**: çizim tablayı aşarsa
   uyarı verir ve **indirmeyi kilitler** — makine sınır dışına çıkmaz.
 - 👁️ **G-code simülasyonu**: G0 (boşta) kesik kırmızı, G1 (kesim) düz mavi.
-- 🛡️ **Makine güvenliği**: her X/Y'den önce Güvenli Z, yol sonunda anında geri
+- � **Canlı çıktı ve istatistikler**: yol sayısı, kesim mesafesi ve boşta mesafe
+  ölçülür.
+- 🧭 **Gerçek ölçekli tabla önizleme**: milimetre ızgara, orijin işaretleri ve
+  tablanın gerçek boyutu.
+- �🛡️ **Makine güvenliği**: her X/Y'den önce Güvenli Z, yol sonunda anında geri
   çekilme, `NaN` koruması.
 - 🇹🇷 Tamamen Türkçe, responsive arayüz.
 
@@ -32,6 +36,10 @@ sınırlarıyla kontrol eder. CNC çizici / plotter / kalem-plotter için tasarl
 npm install
 npm run dev        # http://localhost:5173
 ```
+
+> Windows PowerShell kullanıyorsanız ve `npm run dev` script izni hatası alırsanız:
+> - `npm.cmd run dev`
+> - veya `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`
 
 Üretim derlemesi:
 
