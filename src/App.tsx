@@ -427,7 +427,7 @@ export default function App() {
           </div>
 
           {gcode && (
-            <div className="flex h-[420px] max-h-[45vh] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
+            <div className="flex h-[600px] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
               <GCodeEditor
                 originalGCode={gcode}
                 onGCodeChange={(newGCode) => useMachineStore.setState({ editedGCode: newGCode })}

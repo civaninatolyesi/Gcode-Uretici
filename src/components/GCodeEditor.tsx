@@ -326,17 +326,17 @@ export function GCodeEditor({ originalGCode, onGCodeChange }: GCodeEditorProps) 
         )}
       </div>
 
-      {/* Helpful tips */}
+      {/* Helpful tips — collapsed by default so they don't steal editor height */}
       {isEditing && (
-        <div className="text-xs text-slate-500 bg-slate-900/50 rounded-lg p-3">
-          <strong>İpuçları:</strong>
+        <details className="shrink-0 text-xs text-slate-500 bg-slate-900/50 rounded-lg px-3 py-2">
+          <summary className="cursor-pointer select-none font-semibold">İpuçları</summary>
           <ul className="mt-1 space-y-1 ml-3 list-disc">
             <li>G0 = hızlı hareket (boşta), G1 = beslemeli hareket (kesim)</li>
             <li>X, Y, Z eksen koordinatları, F hız parametresidir</li>
             <li>Satır başında ; ile başlayan satırlar açıklamadır</li>
             <li>Program sonunda güvenli Z yüksekliğine dönülmesi önerilir</li>
           </ul>
-        </div>
+        </details>
       )}
     </div>
   );
