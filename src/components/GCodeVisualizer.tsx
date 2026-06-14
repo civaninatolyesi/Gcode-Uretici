@@ -567,22 +567,30 @@ function SimControls({
         ⟲ Baştan
       </button>
 
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.001}
-        value={progress}
-        onChange={(e) => seek(Number(e.target.value))}
-        disabled={!hasPath}
-        className="h-1.5 flex-1 cursor-pointer accent-blue-500"
-        aria-label="Simülasyon ilerlemesi"
-      />
-      <span className="w-10 text-right text-xs tabular-nums text-slate-300">
-        %{Math.round(progress * 100)}
-      </span>
+      {/*
+        The scrubber takes its own full-width row on small screens (basis-full)
+        and shares the row on wider ones (sm:basis-0 → flex-grow). min-w-0 lets
+        it shrink instead of overflowing/overlapping its neighbours — the bug
+        where the bar "stayed behind / broke" on narrow layouts.
+      */}
+      <div className="flex min-w-0 basis-full items-center gap-3 sm:basis-0 sm:flex-1">
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.001}
+          value={progress}
+          onChange={(e) => seek(Number(e.target.value))}
+          disabled={!hasPath}
+          className="h-1.5 min-w-0 flex-1 cursor-pointer accent-blue-500"
+          aria-label="Simülasyon ilerlemesi"
+        />
+        <span className="w-10 shrink-0 text-right text-xs tabular-nums text-slate-300">
+          %{Math.round(progress * 100)}
+        </span>
+      </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         {speeds.map((s) => (
           <button
             key={s}

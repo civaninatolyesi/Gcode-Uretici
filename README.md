@@ -48,6 +48,11 @@ npm run build      # tsc + Vite → dist/   (statik, herhangi bir host'a koyulab
 npm run preview    # derlemeyi yerelde önizle
 ```
 
+## Canlı Demo
+
+Uygulamayı hemen test etmek istiyorsanız canlı versiyona erişin:
+👉 **[https://civaninatolyesi.github.io/Gcode-Uretici/](https://civaninatolyesi.github.io/Gcode-Uretici/)**
+
 ## Kullanım
 
 1. Üstteki sekmeden modu seç: **Etiket (Metin)** veya **SVG Dosyası**.
