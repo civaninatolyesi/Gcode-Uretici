@@ -72,6 +72,54 @@ function StatusBadge() {
   );
 }
 
+/** A single axis dimension with a fill bar showing how full the table is. */
+function AxisGauge({
+  label,
+  value,
+  max,
+  pct,
+  exceeds,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  pct: number;
+  exceeds: boolean;
+}) {
+  const barPct = Math.min(100, pct);
+  const barColor = exceeds
+    ? "bg-red-500"
+    : pct > 90
+      ? "bg-amber-400"
+      : "bg-sky-500";
+
+  return (
+    <div
+      className={[
+        "rounded-lg p-3",
+        exceeds ? "bg-red-950/60 ring-1 ring-red-600" : "bg-slate-800",
+      ].join(" ")}
+    >
+      <div className="flex items-baseline justify-between">
+        <span className="text-lg font-semibold text-slate-100">
+          {value.toFixed(1)}
+        </span>
+        <span className="text-[11px] text-slate-400">/ {max} mm</span>
+      </div>
+      <div className="mt-1 mb-1.5 text-[11px] text-slate-400">{label}</div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
+        <div
+          className={`h-full rounded-full ${barColor}`}
+          style={{ width: `${barPct}%` }}
+        />
+      </div>
+      <div className="mt-1 text-right text-[10px] text-slate-500">
+        %{pct.toFixed(0)} dolu
+      </div>
+    </div>
+  );
+}
+
 /** Live physical dimensions + table-limit safety check. */
 function DimensionPanel() {
   const stats = useMachineStore((s) => s.stats);
@@ -89,37 +137,33 @@ function DimensionPanel() {
   const { width, height } = stats.bbox;
   const check = checkWithinLimits(stats, { maxX, maxY });
   const fits = check?.ok ?? true;
+  const pctX = maxX > 0 ? (width / maxX) * 100 : 0;
+  const pctY = maxY > 0 ? (height / maxY) * 100 : 0;
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <div
-          className={[
-            "rounded-lg p-3 text-center",
-            check?.exceedsX ? "bg-red-950/60 ring-1 ring-red-600" : "bg-slate-800",
-          ].join(" ")}
-        >
-          <div className="text-lg font-semibold text-slate-100">
-            {width.toFixed(2)}
-          </div>
-          <div className="text-[11px] text-slate-400">
-            Genişlik (mm) / Max {maxX}
-          </div>
-        </div>
-        <div
-          className={[
-            "rounded-lg p-3 text-center",
-            check?.exceedsY ? "bg-red-950/60 ring-1 ring-red-600" : "bg-slate-800",
-          ].join(" ")}
-        >
-          <div className="text-lg font-semibold text-slate-100">
-            {height.toFixed(2)}
-          </div>
-          <div className="text-[11px] text-slate-400">
-            Yükseklik (mm) / Max {maxY}
-          </div>
-        </div>
+        <AxisGauge
+          label="Genişlik (X)"
+          value={width}
+          max={maxX}
+          pct={pctX}
+          exceeds={!!check?.exceedsX}
+        />
+        <AxisGauge
+          label="Yükseklik (Y)"
+          value={height}
+          max={maxY}
+          pct={pctY}
+          exceeds={!!check?.exceedsY}
+        />
       </div>
+
+      {fits && (
+        <p className="text-center text-xs text-green-400">
+          ✓ Çizim tablaya sığıyor. Tablanın sol-alt köşesinden başlar.
+        </p>
+      )}
 
       {!fits && (
         <div className="rounded-lg border border-red-600 bg-red-950/50 p-3 text-sm text-red-200">
@@ -280,10 +324,14 @@ export default function App() {
         {/* Right: visualizer + raw output */}
         <section className="flex flex-col gap-6">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-              G-Code Simülasyonu
+            <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">
+              Tabla Önizleme & G-Code Simülasyonu
             </h2>
-            <div className="h-[420px]">
+            <p className="mb-3 text-xs text-slate-500">
+              Çizim, makine tablasının üzerinde gerçek oran ve konumuyla
+              gösterilir. Tabla kenarındaki sayılar milimetredir.
+            </p>
+            <div className="h-[480px]">
               <GCodeVisualizer />
             </div>
           </div>
