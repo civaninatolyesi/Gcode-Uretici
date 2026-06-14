@@ -11,7 +11,9 @@
  * pipeline the SVG flow used.
  */
 
-import opentype from "opentype.js";
+// opentype.js v2 ships as an ES module with named exports (no default export),
+// so we import the namespace. This also exposes the `opentype.Font` type.
+import * as opentype from "opentype.js";
 import type { Point, Polyline } from "./types";
 
 const FONT_URL = `${import.meta.env.BASE_URL}fonts/Roboto-Regular.ttf`;
