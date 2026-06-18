@@ -98,7 +98,6 @@ type PersistedState = Pick<
   | "safeZ"
   | "drawZ"
   | "feedRate"
-  | "travelRate"
   | "tolerance"
   | "penDiameterMm"
   | "maxX"
@@ -167,8 +166,6 @@ function loadPersistedState(): Partial<PersistedState> {
       safeZ: typeof parsed.safeZ === "number" ? parsed.safeZ : undefined,
       drawZ: typeof parsed.drawZ === "number" ? parsed.drawZ : undefined,
       feedRate: typeof parsed.feedRate === "number" ? parsed.feedRate : undefined,
-      travelRate:
-        typeof parsed.travelRate === "number" ? parsed.travelRate : undefined,
       tolerance:
         typeof parsed.tolerance === "number" ? parsed.tolerance : undefined,
       penDiameterMm:
@@ -204,7 +201,6 @@ function getPersistedState(state: MachineState): PersistedState {
     safeZ: state.safeZ,
     drawZ: state.drawZ,
     feedRate: state.feedRate,
-    travelRate: state.travelRate,
     tolerance: state.tolerance,
     penDiameterMm: state.penDiameterMm,
     maxX: state.maxX,
@@ -271,7 +267,6 @@ export const useMachineStore = create<MachineState>((set, get) => ({
     safeZ: 5,
     drawZ: 0,
     feedRate: 1000,
-    travelRate: 2000,
     tolerance: 0.1,
     penDiameterMm: 0,
 
@@ -372,7 +367,6 @@ export const useMachineStore = create<MachineState>((set, get) => ({
       safeZ: s.safeZ,
       drawZ: s.drawZ,
       feedRate: s.feedRate,
-      travelRate: s.travelRate,
       tolerance: s.tolerance,
       penDiameterMm: s.penDiameterMm,
     };

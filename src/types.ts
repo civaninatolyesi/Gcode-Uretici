@@ -17,7 +17,6 @@ export interface MachineParams {
   safeZ: number;
   drawZ: number;
   feedRate: number;
-  travelRate: number;
   tolerance: number;
   /**
    * Physical pen/tool tip diameter in mm. Does NOT change the G-code (the

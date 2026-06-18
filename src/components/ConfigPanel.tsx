@@ -24,13 +24,6 @@ const PARAM_FIELDS: FieldDef<keyof MachineParams>[] = [
   { key: "drawZ", label: "Çizim / Dalış Z", hint: "mm", step: 0.1 },
   { key: "feedRate", label: "Kesim Hızı (F)", hint: "mm/dk", step: 50, min: 1 },
   {
-    key: "travelRate",
-    label: "Boşta Gezinme Hızı",
-    hint: "mm/dk",
-    step: 50,
-    min: 1,
-  },
-  {
     key: "tolerance",
     label: "Hassasiyet (Tolerans)",
     hint: "mm",
