@@ -98,15 +98,6 @@ export function validateGCode(gcode: string): GCodeValidationError[] {
         });
       }
 
-      // Warn about Z positions on G1 (usually should be G0)
-      if (parsed.z !== undefined && (parsed.x !== undefined || parsed.y !== undefined)) {
-        errors.push({
-          lineNumber: lineNum,
-          type: "info",
-          message: "G1 sırasında X/Y ve Z birlikte hareket ediliyor. Z eksen hareketinin G0 olması genellikle daha hızlı olur.",
-          code: "Z_WITH_XY",
-        });
-      }
     }
 
     // Rule: Negative positions are usually mistakes (unless intentional offset)

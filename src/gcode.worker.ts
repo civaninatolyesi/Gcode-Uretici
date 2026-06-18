@@ -150,11 +150,8 @@ function generateGcode(
   const safeZ = assertFinite(params.safeZ, "Güvenli Z");
   const drawZ = assertFinite(params.drawZ, "Çizim Z");
   const feedRate = assertFinite(params.feedRate, "Kesim Hızı");
-  const travelRate = assertFinite(params.travelRate, "Boşta Gezinme Hızı");
 
   if (feedRate <= 0) throw new Error("Kesim Hızı 0'dan büyük olmalıdır.");
-  if (travelRate <= 0)
-    throw new Error("Boşta Gezinme Hızı 0'dan büyük olmalıdır.");
   if (safeZ <= drawZ)
     throw new Error("Güvenli Z, Çizim Z'den büyük olmalıdır (çarpışma riski).");
 
@@ -194,28 +191,34 @@ function generateGcode(
 
     lines.push(`; --- Yol ${pIdx + 1}/${polylines.length} ---`);
 
-    // a. Rapid to the start of the segment (at safe Z).
-    lines.push(`G0 X${fmt(start.x)} Y${fmt(start.y)} F${fmt(travelRate)}`);
+    // a. Rapid XY transit at safe Z — no F on G0 (GRBL ignores it and runs at
+    //    hardware max; writing F here is misleading and serves no purpose).
+    lines.push(`G0 X${fmt(start.x)} Y${fmt(start.y)}`);
     travelDistance += Math.hypot(start.x - cur.x, start.y - cur.y);
     moves.push({ rapid: true, x: start.x, y: start.y, zOnly: false });
     cur = { x: start.x, y: start.y };
 
-    // b. Plunge to draw Z at feed rate.
+    // b. Controlled plunge — always G1 with feedRate so the spindle descends
+    //    at a known speed. A G0 plunge risks snapping the bit on hard materials.
     lines.push(`G1 Z${fmt(drawZ)} F${fmt(feedRate)} ; Dalis`);
     moves.push({ rapid: false, x: cur.x, y: cur.y, zOnly: true });
 
-    // c. Drawing moves.
+    // c. Cutting moves. F is repeated on the first move of each path so the
+    //    modal feedrate is always explicit (guards against stale state if the
+    //    file is run from mid-program).
     for (let i = 1; i < pl.length; i++) {
       const p = pl[i];
       assertFinite(p.x, "cizim X");
       assertFinite(p.y, "cizim Y");
-      lines.push(`G1 X${fmt(p.x)} Y${fmt(p.y)}`);
+      const fTag = i === 1 ? ` F${fmt(feedRate)}` : "";
+      lines.push(`G1 X${fmt(p.x)} Y${fmt(p.y)}${fTag}`);
       cutDistance += Math.hypot(p.x - cur.x, p.y - cur.y);
       moves.push({ rapid: false, x: p.x, y: p.y, zOnly: false });
       cur = { x: p.x, y: p.y };
     }
 
-    // d. Retract immediately when the path is finished.
+    // d. Retract — G0 is correct here (Z is the only axis moving, tool is
+    //    clear of the material). No F: G0 uses machine rapid speed by design.
     lines.push(`G0 Z${fmt(safeZ)} ; Geri cekil`);
     moves.push({ rapid: true, x: cur.x, y: cur.y, zOnly: true });
   }
@@ -223,7 +226,9 @@ function generateGcode(
   // --- Footer ---
   lines.push("; --- Bitis ---");
   lines.push(`G0 Z${fmt(safeZ)} ; Guvenli yukseklik`);
-  lines.push(`G0 X0.000 Y0.000 F${fmt(travelRate)} ; Sifir noktasina don`);
+  // Final home move: G0 is intentional — the job is done, Z is at safe height,
+  // and a rapid return to origin is standard practice. No F on G0.
+  lines.push(`G0 X0.000 Y0.000 ; Sifir noktasina don`);
   travelDistance += Math.hypot(cur.x, cur.y);
   moves.push({ rapid: true, x: 0, y: 0, zOnly: false });
   lines.push("M30 ; Program sonu");
